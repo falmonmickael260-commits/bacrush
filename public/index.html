@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d1a" />
+  <title>BacRush — 15 manches, arbitrage IA</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ACCUEIL ------------------------------------------------------------ -->
+    <section class="screen is-active" id="screen-home">
+      <div class="home-card">
+        <h1 class="logo">Bac<span>Rush</span></h1>
+        <p class="tagline">15 manches · 8 rubriques · 4 minutes · arbitrage par IA</p>
+
+        <label class="field">
+          <span>Ton pseudo</span>
+          <input id="input-name" type="text" maxlength="18" placeholder="Alice" autocomplete="nickname" />
+        </label>
+
+        <button class="btn btn-primary btn-block" id="btn-create">Créer une partie</button>
+
+        <div class="divider"><span>ou</span></div>
+
+        <div class="join-row">
+          <input id="input-code" type="text" maxlength="4" placeholder="CODE" autocapitalize="characters"
+               spellcheck="false" autocorrect="off" enterkeyhint="go" inputmode="text" />
+          <button class="btn btn-ghost" id="btn-join">Rejoindre</button>
+        </div>
+
+        <p class="home-error" id="home-error" hidden></p>
+        <p class="ai-badge" id="ai-badge"></p>
+      </div>
+    </section>
+
+    <!-- SALON -------------------------------------------------------------- -->
+    <section class="screen" id="screen-lobby">
+      <div class="lobby-card">
+        <p class="eyebrow">Salon</p>
+        <div class="room-code" id="lobby-code" title="Partage ce code">----</div>
+        <p class="muted">Partage ce code pour que les autres rejoignent la partie.</p>
+        <ul class="player-grid" id="lobby-players"></ul>
+        <button class="btn btn-primary btn-block" id="btn-start">Lancer la partie</button>
+        <p class="muted small" id="lobby-hint">En attente de l'hôte…</p>
+      </div>
+    </section>
+
+    <!-- MANCHE ------------------------------------------------------------- -->
+    <section class="screen" id="screen-round">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="pill" id="round-pill">Manche 1/15</span>
+          <span class="pill pill-muted" id="room-pill"></span>
+          <span class="pill pill-letter" id="letter-pill" aria-label="Lettre de la manche">M</span>
+        </div>
+        <div class="timer" id="timer"><span id="timer-text">4:00</span></div>
+        <div class="topbar-right">
+          <button class="btn btn-mini" id="btn-scores">Scores</button>
+        </div>
+      </header>
+
+      <div class="letter-stage" id="letter-stage">
+        <div class="letter-halo"></div>
+        <div class="letter" id="letter">M</div>
+        <p class="letter-caption" id="letter-caption">Lettre de la manche</p>
+      </div>
+
+      <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+
+      <form class="grid" id="answers-form" autocomplete="off"></form>
+
+      <div class="finish-dock" id="finish-dock" hidden>
+        <p class="finish-hint" id="finish-hint">Les 8 rubriques sont remplies</p>
+        <button class="btn btn-finish" id="btn-finish" type="button">FIN</button>
+      </div>
+
+      <p class="fill-counter" id="fill-counter">0 / 8 rubriques remplies</p>
+    </section>
+
+    <!-- VALIDATION --------------------------------------------------------- -->
+    <section class="screen" id="screen-validating">
+      <div class="validating-card">
+        <div class="brain">
+          <span></span><span></span><span></span>
+        </div>
+        <h2>L'IA vérifie chaque réponse…</h2>
+        <p class="muted" id="validating-detail">Lettre, rubrique, orthographe, réponses identiques.</p>
+      </div>
+    </section>
+
+    <!-- RÉSULTATS ---------------------------------------------------------- -->
+    <section class="screen" id="screen-results">
+      <header class="results-head">
+        <div>
+          <p class="eyebrow" id="results-eyebrow">Résultats — manche 1</p>
+          <h2>Lettre <b id="results-letter">M</b></h2>
+          <p class="muted small" id="results-source"></p>
+        </div>
+        <div class="round-totals" id="round-totals"></div>
+      </header>
+
+      <div class="results-list" id="results-list"></div>
+
+      <div class="results-footer">
+        <button class="btn btn-primary" id="btn-next">MANCHE SUIVANTE</button>
+        <p class="muted small" id="next-hint"></p>
+      </div>
+    </section>
+
+    <!-- CLASSEMENT FINAL --------------------------------------------------- -->
+    <section class="screen" id="screen-final">
+      <canvas id="confetti"></canvas>
+      <div class="final-card">
+        <p class="eyebrow">Partie terminée — 15 manches</p>
+        <h2 class="winner" id="final-winner"></h2>
+        <ol class="podium" id="podium"></ol>
+        <div class="table-scroll">
+          <table class="final-table" id="final-table"></table>
+        </div>
+        <button class="btn btn-primary" id="btn-newgame">NOUVELLE PARTIE</button>
+      </div>
+    </section>
+
+    <!-- PANNEAU SCORES ----------------------------------------------------- -->
+    <aside class="scores-panel" id="scores-panel" hidden>
+      <header>
+        <h3>Classement</h3>
+        <button class="btn btn-mini" id="btn-close-scores">Fermer</button>
+      </header>
+      <ol id="scores-list"></ol>
+      <p class="muted small" id="letters-used"></p>
+    </aside>
+
+    <div class="toast" id="toast" hidden></div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
