@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { GameHub } from './game/hub.js';
 import { CATEGORIES } from './shared/categories.js';
 import { TOTAL_ROUNDS } from './game/letters.js';
-import { ROUND_DURATION_MS } from './game/room.js';
+import { ROUND_DURATION_MS, MAX_PLAYERS } from './game/room.js';
 import { AI_MODE, UNCERTAIN_POLICY } from './ai/validator.js';
 import { hasCredentials, DEFAULT_MODEL } from './ai/anthropic-validator.js';
 
@@ -169,6 +169,7 @@ async function handleApi(req, res, url, hub) {
       })),
       totalRounds: TOTAL_ROUNDS,
       roundDurationMs: ROUND_DURATION_MS,
+      maxPlayers: MAX_PLAYERS,
       ai: {
         mode: AI_MODE,
         configured: hasCredentials(),
@@ -197,7 +198,14 @@ async function handleApi(req, res, url, hub) {
     const body = req.method === 'POST' ? await readBody(req) : {};
 
     if (action === 'join' && req.method === 'POST') {
-      if (room.players.size >= 10) return sendJSON(res, 409, { error: 'Salle complète' });
+      if (room.isFull) {
+        return sendJSON(res, 409, {
+          error: `Salon complet (${MAX_PLAYERS} joueurs maximum)`,
+        });
+      }
+      if (room.phase !== 'lobby') {
+        return sendJSON(res, 409, { error: 'La partie a déjà commencé' });
+      }
       const player = room.addPlayer(body.name);
       hub.broadcast(room);
       return sendJSON(res, 201, {

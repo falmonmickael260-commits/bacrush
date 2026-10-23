@@ -1,0 +1,25 @@
+# Déploiement Render — « New + » → « Blueprint » → ce dépôt.
+#
+# Un seul exemplaire (numInstances: 1) : le serveur détient les parties en
+# mémoire et pousse les mises à jour par SSE. Plusieurs exemplaires
+# répartiraient les joueurs d'un même salon sur des processus différents, qui
+# ne partageraient ni la lettre, ni le chronomètre, ni les scores.
+services:
+  - type: web
+    name: bacrush
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Plan gratuit : le service s'endort après 15 min sans trafic (premier
+    # chargement lent au réveil) et les parties en cours sont perdues.
+    # Passer à `starter` pour un serveur qui tourne en continu.
+    plan: free
+    region: frankfurt
+    numInstances: 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Clé d'arbitrage IA : à saisir dans l'interface Render, jamais ici.
+      # Sans elle, le jeu tourne en mode secours et l'indique aux joueurs.
+      - key: ANTHROPIC_API_KEY
+        sync: false

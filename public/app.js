@@ -319,8 +319,10 @@ function renderLobby() {
   const isHost = Boolean(state.you?.isHost);
   $('btn-start').hidden = !isHost;
   $('btn-start').disabled = state.players.length < 1;
+  const capacity = state.maxPlayers ?? config.maxPlayers ?? 8;
+  $('lobby-count').textContent = `${state.players.length} / ${capacity} joueurs`;
   $('lobby-hint').textContent = isHost
-    ? `${state.players.length} joueur(s) · ${config.totalRounds} manches de ${config.roundDurationMs / 1000} s`
+    ? `${config.totalRounds} manches de ${config.roundDurationMs / 1000} s · lance quand tout le monde est là`
     : "En attente du lancement par l'hôte…";
 }
 

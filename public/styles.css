@@ -162,7 +162,14 @@ input[type="text"]:focus {
   color: transparent;
   cursor: copy;
 }
-.player-grid { list-style: none; padding: 0; margin: 22px 0; display: grid; gap: 8px; }
+.lobby-count {
+  margin: 18px 0 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.player-grid { list-style: none; padding: 0; margin: 12px 0 22px; display: grid; gap: 8px; }
 .player-grid li {
   display: flex;
   align-items: center;

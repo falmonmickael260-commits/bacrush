@@ -7,6 +7,7 @@ import { scoreRound } from './scoring.js';
 export const ROUND_DURATION_MS = 240_000; // 4 minutes — durée officielle d'une manche
 export const REVEAL_DURATION_MS = 3_200; // animation de révélation de la lettre
 export const VALIDATION_TIMEOUT_MS = 90_000; // garde-fou si l'IA ne répond jamais
+export const MAX_PLAYERS = 8; // capacité d'un salon
 
 export const PHASE = Object.freeze({
   LOBBY: 'lobby',
@@ -111,6 +112,10 @@ export class Room {
 
   get playerList() {
     return [...this.players.values()];
+  }
+
+  get isFull() {
+    return this.players.size >= MAX_PLAYERS;
   }
 
   // ------------------------------------------------------------ cycle de jeu
@@ -390,6 +395,7 @@ export class Room {
       serverNow: t,
       version: this.version,
       totalRounds: TOTAL_ROUNDS,
+      maxPlayers: MAX_PLAYERS,
       roundNumber: this.roundIndex + 1,
       gameNumber: this.gameNumber,
       lettersUsed: this.letters.slice(0, Math.max(0, this.roundIndex + 1)),

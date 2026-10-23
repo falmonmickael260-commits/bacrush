@@ -1,9 +1,10 @@
 # BacRush — Petit Bac multijoueur, 15 manches, arbitrage par IA
 
-BacRush est un jeu de Petit Bac en ligne. Le serveur est la seule source de vérité : il tire
-les lettres, tient le chronomètre, enregistre les réponses, décide de la
-clôture, fait vérifier chaque mot par l'IA et applique le barème. Le navigateur
-se contente d'afficher et d'envoyer des intentions.
+BacRush est un jeu de Petit Bac en ligne : un salon, **jusqu'à 8 joueurs**,
+15 manches. Le serveur est la seule source de vérité — il tire les lettres,
+tient le chronomètre, enregistre les réponses, décide de la clôture, fait
+vérifier chaque mot par l'IA et applique le barème. Le navigateur se contente
+d'afficher et d'envoyer des intentions.
 
 ## Démarrer
 
@@ -20,17 +21,45 @@ Depuis un téléphone (en0) : http://192.168.1.x:3000
 ```
 
 Un joueur crée la partie et partage le code à 4 caractères ; les autres le
-saisissent depuis leur propre appareil (ordinateur, tablette ou téléphone sur
-le même réseau Wi-Fi).
+saisissent depuis leur propre appareil. En local, tout le monde doit être sur
+le même réseau Wi-Fi — pour jouer avec des gens ailleurs, voir
+**Jouer en ligne** ci-dessous.
 
 Sans `ANTHROPIC_API_KEY`, le jeu fonctionne en **mode secours** : l'interface
 l'indique clairement et la validation s'appuie sur des lexiques et des règles
 locales, bien plus limitées que l'IA.
 
+## Jouer en ligne (déploiement)
+
+En local, le serveur n'est joignable que sur ton réseau. Pour que des joueurs
+d'ailleurs rejoignent un salon, il faut l'héberger. Le dépôt contient tout le
+nécessaire : un `Dockerfile` et un blueprint `render.yaml`.
+
+**Sur Render (gratuit, le plus direct)**
+
+1. [dashboard.render.com](https://dashboard.render.com) → **New +** → **Blueprint**
+2. Choisir le dépôt `bacrush` — Render lit `render.yaml` tout seul
+3. Quand il demande `ANTHROPIC_API_KEY`, coller la clé (c'est le seul secret ;
+   sans elle le jeu tourne en mode secours et le dit aux joueurs)
+4. **Apply** → au bout de quelques minutes, une adresse du type
+   `https://bacrush.onrender.com` : c'est elle qu'on partage
+
+Le plan gratuit endort le service après 15 minutes sans trafic : le premier
+chargement au réveil est lent et **les parties en cours sont perdues**. Pour
+des soirées régulières, passer `plan: free` à `plan: starter` dans
+`render.yaml` (service toujours allumé).
+
+**Ailleurs** — le `Dockerfile` fonctionne tel quel sur Fly.io, Railway, Koyeb
+ou n'importe quel hébergeur Docker. Une seule contrainte, quel que soit
+l'hôte : **un seul exemplaire**. Les parties vivent dans la mémoire du
+processus ; deux exemplaires enverraient les joueurs d'un même salon sur des
+serveurs différents, avec des lettres et des scores distincts.
+
 ## Règles appliquées
 
 | Règle | Mise en œuvre |
 |---|---|
+| Salon de 2 à 8 joueurs | capacité vérifiée côté serveur (`MAX_PLAYERS`), 9ᵉ joueur refusé |
 | 8 rubriques fixes | `src/shared/categories.js` |
 | 15 manches, 15 lettres distinctes | tirage unique par partie (`src/game/letters.js`), 20 lettres éligibles (K, Q, W, X, Y, Z écartées) |
 | 240 s par manche | horloge serveur (`src/game/room.js`), le navigateur n'affiche qu'un décompte dérivé |
@@ -118,7 +147,7 @@ L'interface est pensée pour être jouée au pouce :
 ## Tests
 
 ```bash
-npm test          # 63 tests, sans réseau ni clé d'API
+npm test          # 65 tests, sans réseau ni clé d'API
 npm run test:ai   # ajoute les tests de l'IA réelle (nécessite ANTHROPIC_API_KEY)
 ```
 
@@ -129,7 +158,7 @@ forcé, outil de recherche, reprise après `pause_turn`) sans consommer de jeton
 ## Limites connues
 
 - L'état des parties vit en mémoire : un redémarrage du serveur efface les
-  parties en cours.
+  parties en cours, et l'hébergement doit rester sur un seul exemplaire.
 - Le mode secours est volontairement modeste ; il ne remplace pas l'IA.
 - Les salons sont ouverts à qui connaît le code (jeu entre amis, réseau de
   confiance).
