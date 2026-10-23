@@ -30,6 +30,11 @@ function setup({ players = ['Alice', 'Bob'], letter = 'M' } = {}) {
   return { room, clock, players: created, forceLetter };
 }
 
+/** Passe la phase de contestation : tout le monde se déclare prêt. */
+function settle(room) {
+  for (const player of room.playerList) room.markReady(player.id);
+}
+
 function fullAnswers(letter) {
   const out = {};
   for (const key of CATEGORY_KEYS) out[key] = `${letter}ot`;
@@ -137,6 +142,8 @@ test('les points d\'une manche ne peuvent pas être attribués deux fois', () =>
     }],
   ]);
   room.applyVerdicts({ verdicts, source: 'test' });
+  assert.equal(room.phase, PHASE.VOTING, 'le salon peut contester avant le comptage');
+  settle(room);
   const afterFirst = room.players.get(alice.id).score;
   assert.equal(afterFirst, 2);
   const again = room.applyVerdicts({ verdicts, source: 'test' });
@@ -188,6 +195,7 @@ test('la manche suivante repart à 240 s, champs vidés, scores conservés', () 
     }]]),
     source: 'test',
   });
+  settle(room);
   assert.equal(room.players.get(alice.id).score, 2);
   assert.equal(room.nextRound(0).ok, true);
   clock.t += REVEAL_DURATION_MS + 1;
@@ -201,6 +209,7 @@ test('MANCHE SUIVANTE n\'initialise la manche qu\'une seule fois', () => {
   const { room } = setup();
   room.closeByTimeout();
   room.applyVerdicts({ verdicts: new Map(), source: 'test' });
+  settle(room);
   assert.equal(room.nextRound(0).ok, true);
   const letterAfter = room.round.letter;
   const second = room.nextRound(0); // second clic, même manche d'origine

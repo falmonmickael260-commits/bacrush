@@ -58,22 +58,41 @@ function readBody(req) {
   });
 }
 
-// Garde-fou anti-abus très simple (le jeu est destiné à un réseau de confiance).
-const buckets = new Map();
-function rateLimited(ip) {
-  const now = Date.now();
-  const bucket = buckets.get(ip) ?? { count: 0, resetAt: now + 10_000 };
-  if (now > bucket.resetAt) {
-    bucket.count = 0;
-    bucket.resetAt = now + 10_000;
-  }
-  bucket.count++;
-  buckets.set(ip, bucket);
-  return bucket.count > 120;
+/**
+ * Garde-fou anti-flood, volontairement large : plusieurs joueurs d'un même
+ * salon partagent souvent une seule adresse publique (box, 4G, école), et la
+ * saisie envoie une requête par joueur toutes les 350 ms. La limite doit
+ * arrêter un abus évident, jamais une partie normale à 8.
+ *
+ * Le seau est propre à chaque serveur (pas d'état de module partagé) et les
+ * entrées inactives sont purgées.
+ */
+const RATE_WINDOW_MS = 10_000;
+const RATE_MAX = 600; // ~60 requêtes/seconde pour l'ensemble d'une adresse
+
+function createRateLimiter() {
+  const buckets = new Map();
+  return function rateLimited(ip) {
+    const now = Date.now();
+    if (buckets.size > 500) {
+      for (const [key, bucket] of buckets) {
+        if (now > bucket.resetAt + 60_000) buckets.delete(key);
+      }
+    }
+    const bucket = buckets.get(ip) ?? { count: 0, resetAt: now + RATE_WINDOW_MS };
+    if (now > bucket.resetAt) {
+      bucket.count = 0;
+      bucket.resetAt = now + RATE_WINDOW_MS;
+    }
+    bucket.count++;
+    buckets.set(ip, bucket);
+    return bucket.count > RATE_MAX;
+  };
 }
 
 export function createServer({ hub = new GameHub() } = {}) {
   hub.start();
+  const rateLimited = createRateLimiter();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
@@ -238,6 +257,19 @@ async function handleApi(req, res, url, hub) {
         const result = room.requestFinish(player.id);
         hub.pump(room); // lance la validation immédiatement
         return sendJSON(res, result.ok || result.ignored ? 200 : 409, result);
+      }
+      case 'challenge': {
+        const result = room.toggleChallenge(player.id, {
+          targetPlayerId: String(body.targetPlayerId ?? ''),
+          categoryKey: String(body.categoryKey ?? ''),
+        });
+        hub.broadcast(room);
+        return sendJSON(res, result.ok ? 200 : 409, result);
+      }
+      case 'ready': {
+        const result = room.markReady(player.id);
+        hub.pump(room);
+        return sendJSON(res, 200, result);
       }
       case 'next': {
         const result = room.nextRound(

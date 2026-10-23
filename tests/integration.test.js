@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
 import { GameHub } from '../src/game/hub.js';
 import { createValidator } from '../src/ai/validator.js';
-import { TestClient, validAnswersFor } from './helpers/client.js';
+import { TestClient, validAnswersFor, passVote } from './helpers/client.js';
 import { TOTAL_ROUNDS } from '../src/game/letters.js';
 
 /** Serveur réel + validation déterministe (mode secours, aucun appel réseau). */
@@ -21,6 +21,7 @@ async function startServer({ roundDurationMs = 2_000, revealDurationMs = 30 } = 
     baseUrl: `http://127.0.0.1:${port}`,
     hub,
     async close() {
+      server.closeAllConnections?.(); // coupe les flux SSE encore ouverts
       await new Promise((resolve) => server.close(resolve));
       hub.stop();
     },
@@ -57,6 +58,11 @@ test('les deux joueurs reçoivent la même lettre, le même temps et les mêmes 
   await bob.sendAnswers(validAnswersFor(letter));
   await alice.finish();
 
+  // Phase de contestation : les deux joueurs se déclarent prêts.
+  await alice.waitFor((s) => s.phase === 'voting', { label: 'phase de vote' });
+  await bob.waitFor((s) => s.phase === 'voting', { label: 'phase de vote (Bob)' });
+  await passVote([alice, bob]);
+
   await alice.waitFor((s) => s.phase === 'results', { label: 'résultats (Alice)' });
   await bob.waitFor((s) => s.phase === 'results', { label: 'résultats (Bob)' });
   assert.deepEqual(alice.last.results.totals, bob.last.results.totals);
@@ -81,11 +87,12 @@ test('le clic FIN d\'un joueur clôture la manche pour tout le monde', async (t)
   assert.equal(response.data.ok, true);
 
   await bob.waitFor((s) => s.phase !== 'playing', { label: 'Bob est clôturé aussi' });
-  assert.ok(['validating', 'results'].includes(bob.last.phase));
+  assert.ok(['validating', 'voting', 'results'].includes(bob.last.phase));
 
   // Après la clôture, plus aucune réponse n'est acceptée.
   const late = await bob.sendAnswers({ ville: 'Marseille' });
   assert.equal(late.data.ok, false);
+  await passVote([alice, bob]);
   await bob.waitFor((s) => s.phase === 'results');
   const bobVille = bob.last.results.categories
     .find((c) => c.key === 'ville')
@@ -111,6 +118,7 @@ test('deux clics FIN quasi simultanés : une seule clôture, un seul comptage', 
   const accepted = [a, b].filter((r) => r.data.ok === true);
   assert.equal(accepted.length, 1, 'une seule clôture acceptée');
 
+  await passVote([alice, bob]);
   await alice.waitFor((s) => s.phase === 'results');
   const room = ctx.hub.getRoom(alice.code);
   assert.equal(room.history.filter(Boolean).length, 1, 'une seule manche enregistrée');
@@ -132,8 +140,10 @@ test('à 00:00 la manche se clôt seule, même sans clic', async (t) => {
   await alice.waitFor((s) => s.phase === 'playing');
   await alice.sendAnswers({ ville: validAnswersFor(alice.last.round.letter).ville });
 
-  await alice.waitFor((s) => s.phase === 'results', { timeout: 6000, label: 'clôture automatique' });
+  await alice.waitFor((s) => s.phase === 'voting', { timeout: 6000, label: 'clôture automatique' });
   assert.equal(alice.last.round.closeReason, 'timeout');
+  await passVote([alice, bob]);
+  await alice.waitFor((s) => s.phase === 'results');
   assert.deepEqual(alice.last.results.totals, bob.last.results.totals);
 
   alice.close();
@@ -213,6 +223,7 @@ test('une partie complète enchaîne 15 manches avec 15 lettres distinctes puis 
     assert.equal(bobFinish.data.ok, false, 'FIN refusé avec des rubriques vides');
 
     await alice.finish();
+    await passVote([alice, bob]);
     await alice.waitFor((s) => s.phase === 'results' || s.phase === 'finished', {
       label: `résultats manche ${round + 1}`,
     });

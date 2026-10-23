@@ -92,6 +92,31 @@
       </div>
     </section>
 
+    <!-- VOTE DU SALON ------------------------------------------------------- -->
+    <section class="screen" id="screen-voting">
+      <header class="vote-head">
+        <div>
+          <p class="eyebrow">Contestation — lettre <b id="vote-letter">M</b></p>
+          <h2>Une réponse vous semble fausse ?</h2>
+          <p class="muted small">
+            Touchez « Contester ». Une réponse est refusée si la majorité des autres
+            joueurs la conteste.
+          </p>
+        </div>
+        <div class="vote-meta">
+          <div class="vote-timer" id="vote-timer">1:00</div>
+          <p class="muted small" id="vote-ready-count">0 / 2 prêts</p>
+        </div>
+      </header>
+
+      <div class="vote-list" id="vote-list"></div>
+
+      <div class="results-footer">
+        <button class="btn btn-primary" id="btn-ready">PRÊT</button>
+        <p class="muted small" id="vote-hint">Le vote se termine seul à la fin du compte à rebours.</p>
+      </div>
+    </section>
+
     <!-- RÉSULTATS ---------------------------------------------------------- -->
     <section class="screen" id="screen-results">
       <header class="results-head">

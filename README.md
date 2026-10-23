@@ -55,7 +55,9 @@ le même réseau Wi-Fi — pour jouer avec des gens ailleurs, voir
 
 Sans `ANTHROPIC_API_KEY`, le jeu fonctionne en **mode secours** : l'interface
 l'indique clairement et la validation s'appuie sur des lexiques et des règles
-locales, bien plus limitées que l'IA.
+locales, bien plus limitées que l'IA. Le vote du salon (ci-dessous) prend alors
+le relais : les joueurs arbitrent eux-mêmes ce que le serveur ne sait pas
+trancher, et le jeu reste parfaitement jouable sans rien payer.
 
 ## Jouer en ligne (déploiement)
 
@@ -94,7 +96,24 @@ serveurs différents, avec des lettres et des scores distincts.
 | Bouton FIN | invisible tant que les 8 rubriques ne sont pas remplies, revérifié côté serveur |
 | Clôture globale | un seul clic accepté, la manche se termine pour tout le monde |
 | Fin automatique à 00:00 | balayage serveur toutes les 250 ms, sans dépendre d'un navigateur ouvert |
-| Barème 2 / 1 / 0 | `src/game/scoring.js`, appliqué après validation, jamais par l'IA |
+| Vote du salon | 60 s de contestation avant le comptage, majorité des autres joueurs |
+| Barème 2 / 1 / 0 | `src/game/scoring.js`, appliqué après le vote, jamais par l'IA |
+
+## Le vote du salon (arbitrage humain)
+
+Après la validation et **avant que le moindre point ne soit attribué**, le
+salon dispose de 60 secondes pour contester. Chaque joueur voit les réponses de
+tous, avec leur statut provisoire, et peut toucher « Contester » sur celles des
+autres — jamais sur les siennes, ni sur une réponse déjà à zéro.
+
+Une réponse est refusée si **la majorité stricte des autres joueurs** la
+conteste : 2 voix sur 2 autres joueurs, 2 sur 3, 4 sur 7. Sinon le verdict
+initial tient. Le vote se termine dès que tout le monde a appuyé sur « Prêt »,
+ou seul à la fin du compte à rebours — un joueur parti ne bloque personne.
+
+C'est ce qui rend le jeu **jouable sans clé d'API** : le mode secours valide ce
+qu'il reconnaît, et les joueurs tranchent le reste entre eux, comme à la vraie
+table. En solo, il n'y a pas de vote : les points s'appliquent directement.
 
 ## Comment l'IA valide (le cœur du jeu)
 
@@ -142,7 +161,7 @@ src/
   shared/categories.js   les 8 rubriques et leurs règles
   shared/normalize.js    normalisation, distance d'édition, première lettre
   game/letters.js        tirage des 15 lettres distinctes
-  game/room.js           machine d'état d'une partie (chrono, clôture, scores)
+  game/room.js           machine d'état d'une partie (chrono, clôture, vote, scores)
   game/hub.js            salles, balayage temporel, déclenchement de validation
   game/scoring.js        regroupement + barème fixe
   ai/prompt.js           consignes d'arbitrage et mise en forme du lot
@@ -175,7 +194,7 @@ L'interface est pensée pour être jouée au pouce :
 ## Tests
 
 ```bash
-npm test          # 65 tests, sans réseau ni clé d'API
+npm test          # 77 tests, sans réseau ni clé d'API
 npm run test:ai   # ajoute les tests de l'IA réelle (nécessite ANTHROPIC_API_KEY)
 ```
 

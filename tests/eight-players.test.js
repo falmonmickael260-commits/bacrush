@@ -8,7 +8,7 @@ import { createServer } from '../src/server.js';
 import { GameHub } from '../src/game/hub.js';
 import { createValidator } from '../src/ai/validator.js';
 import { MAX_PLAYERS } from '../src/game/room.js';
-import { TestClient } from './helpers/client.js';
+import { TestClient, passVote } from './helpers/client.js';
 
 async function startServer() {
   const hub = new GameHub({
@@ -22,7 +22,11 @@ async function startServer() {
   return {
     baseUrl: `http://127.0.0.1:${server.address().port}`,
     hub,
-    close: () => new Promise((resolve) => { server.close(resolve); hub.stop(); }),
+    close: () => new Promise((resolve) => {
+      server.closeAllConnections?.();
+      server.close(resolve);
+      hub.stop();
+    }),
   };
 }
 
@@ -101,6 +105,10 @@ test('les 8 joueurs jouent la même manche et reçoivent les mêmes résultats',
   const closing = await Promise.all(clients.map((c) => c.finish()));
   assert.equal(closing.filter((r) => r.data.ok).length, 1, 'une seule clôture acceptée');
 
+  await Promise.all(
+    clients.map((c) => c.waitFor((s) => s.phase === 'voting', { label: `vote (${c.name})` })),
+  );
+  await passVote(clients);
   await Promise.all(
     clients.map((c) => c.waitFor((s) => s.phase === 'results', { label: `résultats (${c.name})` })),
   );

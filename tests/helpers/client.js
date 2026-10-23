@@ -78,7 +78,9 @@ export class TestClient {
       if (predicate(this.last)) return this.last;
       await new Promise((r) => setTimeout(r, 15));
     }
-    throw new Error(`Délai dépassé en attendant : ${label}`);
+    throw new Error(
+      `Délai dépassé en attendant : ${label} (phase vue : ${this.last?.phase}, manche ${this.last?.roundNumber})`,
+    );
   }
 
   answers(values) {
@@ -102,9 +104,31 @@ export class TestClient {
     return this.post(`/api/rooms/${this.code}/start`, { token: this.token });
   }
 
+  ready() {
+    return this.post(`/api/rooms/${this.code}/ready`, { token: this.token });
+  }
+
+  challenge(targetPlayerId, categoryKey) {
+    return this.post(`/api/rooms/${this.code}/challenge`, {
+      token: this.token,
+      targetPlayerId,
+      categoryKey,
+    });
+  }
+
   next(fromRound) {
     return this.post(`/api/rooms/${this.code}/next`, { token: this.token, fromRound });
   }
+}
+
+/** Passe la phase de contestation : tout le monde se déclare prêt. */
+export async function passVote(clients) {
+  const first = clients[0];
+  await first.waitFor((s) => s.phase === 'voting' || s.phase === 'results' || s.phase === 'finished', {
+    label: 'phase de vote',
+  });
+  if (first.last.phase !== 'voting') return;
+  for (const client of clients) await client.ready();
 }
 
 /** Jeu de 8 réponses valides pour une lettre donnée (mode secours déterministe). */

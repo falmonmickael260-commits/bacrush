@@ -146,6 +146,9 @@ export class GameHub {
           this.logger.error?.(`[validation] ${err?.message}`),
         );
       }
+      if (effect.type === 'vote-closed') {
+        this.logger.debug?.(`[vote] contestations closes (${room.code})`);
+      }
       if (effect.type === 'validation-stalled' && room.round && !room.round.scored) {
         this.logger.warn?.(`[validation] trop longue, résultats de secours (${room.code})`);
         room.applyVerdicts({

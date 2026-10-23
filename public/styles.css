@@ -390,6 +390,88 @@ input[type="text"]:focus {
 .brain span:nth-child(3) { animation-delay: 0.32s; }
 @keyframes bounce { 0%, 100% { transform: translateY(0); opacity: 0.5; } 50% { transform: translateY(-13px); opacity: 1; } }
 
+/* ------------------------------------------------------------------ vote */
+#screen-voting { padding: 20px 16px 48px; max-width: 1100px; margin: 0 auto; }
+.vote-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.vote-head h2 { margin: 0 0 4px; font-size: 1.4rem; }
+.vote-head b {
+  background: linear-gradient(135deg, #fff, var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.vote-meta { text-align: right; }
+.vote-timer {
+  font-size: 1.9rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.vote-timer.is-critical { color: var(--bad); }
+
+.vote-list { display: grid; gap: 12px; }
+.vote-cat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.vote-cat > h3 {
+  margin: 0;
+  padding: 11px 16px;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.vote-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 16px;
+  border-top: 1px solid var(--border);
+}
+.vote-row.is-out { opacity: 0.5; }
+.vote-row.is-challenged { background: rgba(251, 113, 133, 0.09); }
+.vote-who { font-size: 0.78rem; color: var(--muted); min-width: 70px; }
+.vote-answer { font-size: 1.05rem; font-weight: 700; }
+.vote-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.vote-count { font-size: 0.74rem; color: var(--bad); font-variant-numeric: tabular-nums; }
+.btn-challenge {
+  padding: 7px 14px;
+  min-height: 38px;
+  font-size: 0.82rem;
+  border-radius: 11px;
+  background: transparent;
+  border-color: rgba(251, 113, 133, 0.45);
+  color: var(--bad);
+}
+.btn-challenge.is-on {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #2a0710;
+}
+.btn-ready-on { background: var(--surface-2); }
+
+@media (max-width: 720px) {
+  #screen-voting { padding: 14px 12px 40px; }
+  .vote-head h2 { font-size: 1.15rem; }
+  .vote-row { padding: 10px 13px; gap: 8px; }
+  .vote-who { min-width: 0; }
+  .btn-challenge { padding: 9px 14px; }
+}
+
 /* -------------------------------------------------------------- résultats */
 #screen-results { padding: 20px 16px 48px; max-width: 1100px; margin: 0 auto; }
 .results-head {

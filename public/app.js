@@ -10,6 +10,7 @@ const ui = {
     lobby: $('screen-lobby'),
     round: $('screen-round'),
     validating: $('screen-validating'),
+    voting: $('screen-voting'),
     results: $('screen-results'),
     final: $('screen-final'),
   },
@@ -173,6 +174,24 @@ $('lobby-code').addEventListener('click', () => {
 $('btn-scores').addEventListener('click', () => { $('scores-panel').hidden = false; });
 $('btn-close-scores').addEventListener('click', () => { $('scores-panel').hidden = true; });
 
+$('btn-ready').addEventListener('click', async () => {
+  $('btn-ready').disabled = true;
+  try {
+    await api(`/api/rooms/${session.code}/ready`, { token: session.token });
+  } catch (err) { toast(err.message); }
+  setTimeout(() => { $('btn-ready').disabled = false; }, 600);
+});
+
+async function toggleChallenge(targetPlayerId, categoryKey) {
+  try {
+    await api(`/api/rooms/${session.code}/challenge`, {
+      token: session.token,
+      targetPlayerId,
+      categoryKey,
+    });
+  } catch (err) { toast(err.message); }
+}
+
 $('btn-next').addEventListener('click', async () => {
   $('btn-next').disabled = true;
   try {
@@ -299,6 +318,7 @@ function render() {
     case 'reveal':
     case 'playing': renderRound(); showScreen('round'); break;
     case 'validating': renderValidating(); showScreen('validating'); break;
+    case 'voting': renderVoting(); showScreen('voting'); break;
     case 'results': renderResults(); showScreen('results'); break;
     case 'finished': renderFinal(); showScreen('final'); break;
     default: showScreen('home');
@@ -390,6 +410,77 @@ function renderValidating() {
     `${who} — vérification de chaque réponse : rubrique, première lettre, orthographe, réponses identiques.`;
 }
 
+function renderVoting() {
+  const vote = state.vote;
+  if (!vote) return;
+  $('vote-letter').textContent = state.round?.letter ?? '';
+  $('vote-ready-count').textContent = `${vote.readyCount} / ${vote.playerCount} prêts`;
+
+  const amReady = vote.readyIds.includes(state.you?.id);
+  const button = $('btn-ready');
+  button.textContent = amReady ? 'EN ATTENTE DES AUTRES…' : 'PRÊT';
+  button.classList.toggle('btn-ready-on', amReady);
+  button.classList.toggle('btn-primary', !amReady);
+
+  const nameOf = (id) => state.players.find((p) => p.id === id)?.name ?? '—';
+  const list = $('vote-list');
+  list.innerHTML = '';
+
+  for (const category of vote.categories) {
+    // On masque les rubriques où personne n'a marqué de point : rien à contester.
+    if (!category.entries.some((e) => e.counted)) continue;
+    const block = document.createElement('section');
+    block.className = 'vote-cat';
+    block.innerHTML = `<h3><span>${category.icon}</span>${escapeHtml(category.label)}</h3>`;
+
+    for (const entry of category.entries) {
+      if (!entry.raw) continue;
+      const row = document.createElement('div');
+      row.className = 'vote-row';
+      row.classList.toggle('is-out', !entry.counted);
+      row.classList.toggle('is-challenged', entry.challenges > 0);
+      const corrected =
+        entry.recognized && entry.recognized.toLowerCase() !== entry.raw.trim().toLowerCase()
+          ? `<span class="res-corrected">→ ${escapeHtml(entry.recognized)}</span>`
+          : '';
+      row.innerHTML = `
+        <span class="vote-who">${escapeHtml(nameOf(entry.playerId))}</span>
+        <span class="vote-answer">${escapeHtml(entry.raw)}</span>
+        ${corrected}
+        ${entry.flagged ? '<span class="badge warn">à vérifier</span>' : ''}
+        ${entry.counted ? '' : '<span class="badge bad">déjà refusée</span>'}
+        <span class="vote-actions">
+          ${entry.challenges > 0 ? `<span class="vote-count">${entry.challenges} / ${entry.required} voix</span>` : ''}
+        </span>`;
+
+      if (entry.canChallenge) {
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.className = `btn btn-challenge${entry.challengedByMe ? ' is-on' : ''}`;
+        action.textContent = entry.challengedByMe ? 'Contestée' : 'Contester';
+        action.addEventListener('click', () => toggleChallenge(entry.playerId, category.key));
+        row.querySelector('.vote-actions').appendChild(action);
+      }
+      block.appendChild(row);
+    }
+    list.appendChild(block);
+  }
+
+  if (!list.children.length) {
+    list.innerHTML = '<p class="muted small">Aucune réponse à contester cette manche.</p>';
+  }
+  tickVoteTimer();
+}
+
+function tickVoteTimer() {
+  if (state?.phase !== 'voting' || !state.vote?.endsAt) return;
+  const remaining = Math.max(0, state.vote.endsAt - serverNow());
+  const timer = $('vote-timer');
+  timer.textContent = formatClock(remaining);
+  timer.classList.toggle('is-critical', remaining <= 15_000);
+}
+setInterval(() => { if (state?.phase === 'voting') tickVoteTimer(); }, 300);
+
 function statusBadge(entry) {
   if (entry.status === 'valide') return '<span class="badge ok">valide</span>';
   if (entry.status === 'a_verifier') return '<span class="badge warn">à vérifier</span>';
@@ -458,6 +549,7 @@ function renderResults() {
             ${statusBadge(entry)}
             ${shared ? `<span class="badge group">partagée ×${group.playerIds.length}</span>` : ''}
             ${entry.searched ? '<span class="badge search">vérifiée en ligne</span>' : ''}
+            ${/^Refusée par le salon/.test(entry.reason) ? '<span class="badge bad">refusée au vote</span>' : ''}
           </div>
           <div class="res-badges">
             <span class="points p${entry.points} pop">${entry.points}</span>

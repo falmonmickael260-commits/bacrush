@@ -8,12 +8,14 @@ export const ROUND_DURATION_MS = 240_000; // 4 minutes — durée officielle d'u
 export const REVEAL_DURATION_MS = 3_200; // animation de révélation de la lettre
 export const VALIDATION_TIMEOUT_MS = 90_000; // garde-fou si l'IA ne répond jamais
 export const MAX_PLAYERS = 8; // capacité d'un salon
+export const VOTE_DURATION_MS = 60_000; // temps de contestation après la validation
 
 export const PHASE = Object.freeze({
   LOBBY: 'lobby',
   REVEAL: 'reveal',
   PLAYING: 'playing',
   VALIDATING: 'validating',
+  VOTING: 'voting',
   RESULTS: 'results',
   FINISHED: 'finished',
 });
@@ -155,6 +157,13 @@ export class Room {
       closedAt: null,
       validationStarted: false,
       validationStartedAt: null,
+      verdicts: null,
+      verdictsApplied: false,
+      uncertainPolicy: 'lenient',
+      provisional: null, // résultats avant le vote du salon
+      challenges: new Map(), // "joueur::rubrique" -> Set de contestataires
+      ready: new Set(),
+      voteEndsAt: null,
       results: null,
       scored: false,
       aiSource: null,
@@ -272,21 +281,134 @@ export class Room {
    * Applique le barème et cumule les scores. Idempotent : les points d'une
    * manche ne peuvent jamais être attribués deux fois.
    */
+  /**
+   * Enregistre les verdicts et calcule un résultat PROVISOIRE. Les points ne
+   * sont pas encore attribués : le salon peut d'abord contester (§ vote).
+   * Idempotent : les verdicts ne sont appliqués qu'une fois.
+   */
   applyVerdicts({ verdicts, source, error = null, uncertainPolicy = 'lenient' }) {
     if (!this.round) return { ok: false, error: 'Aucune manche' };
-    if (this.round.scored) return { ok: true, already: true };
+    if (this.round.verdictsApplied || this.round.scored) return { ok: true, already: true };
 
-    const results = scoreRound({
+    this.round.verdicts = verdicts;
+    this.round.uncertainPolicy = uncertainPolicy;
+    this.round.aiSource = source;
+    this.round.aiError = error;
+    this.round.verdictsApplied = true;
+    this.round.provisional = this.computeResults(verdicts);
+
+    // Seul un salon de plusieurs joueurs peut voter ; en solo on tranche tout de suite.
+    if (this.players.size >= 2) {
+      this.phase = PHASE.VOTING;
+      this.round.voteEndsAt = this.now() + VOTE_DURATION_MS;
+      this.touch();
+      return { ok: true, voting: true };
+    }
+    return this.finalizeRound();
+  }
+
+  computeResults(verdicts) {
+    return scoreRound({
       letter: this.round.letter,
       players: this.playerList.map((p) => ({ id: p.id, name: p.name })),
       answers: this.round.answers,
       verdicts,
-      uncertainPolicy,
+      uncertainPolicy: this.round.uncertainPolicy,
     });
+  }
 
+  // ----------------------------------------------------------------- vote
+  static challengeKey(targetPlayerId, categoryKey) {
+    return `${targetPlayerId}::${categoryKey}`;
+  }
+
+  /** Nombre de voix nécessaires pour refuser la réponse d'un joueur. */
+  requiredChallenges(targetPlayerId) {
+    const voters = Math.max(0, this.players.size - (this.players.has(targetPlayerId) ? 1 : 0));
+    return Math.floor(voters / 2) + 1; // majorité stricte des autres joueurs
+  }
+
+  /**
+   * Un joueur conteste (ou retire sa contestation sur) la réponse d'un autre.
+   * On ne peut contester ni sa propre réponse, ni une réponse déjà sans point.
+   */
+  toggleChallenge(playerId, { targetPlayerId, categoryKey }) {
+    if (this.phase !== PHASE.VOTING || !this.round) {
+      return { ok: false, error: 'Aucun vote en cours' };
+    }
+    if (!this.players.has(playerId) || !this.players.has(targetPlayerId)) {
+      return { ok: false, error: 'Joueur inconnu' };
+    }
+    if (playerId === targetPlayerId) {
+      return { ok: false, error: 'On ne conteste pas sa propre réponse' };
+    }
+    if (!CATEGORY_KEYS.includes(categoryKey)) {
+      return { ok: false, error: 'Rubrique inconnue' };
+    }
+    const entry = this.round.provisional?.categories
+      .find((c) => c.key === categoryKey)
+      ?.entries.find((e) => e.playerId === targetPlayerId);
+    if (!entry || !entry.counted) {
+      return { ok: false, error: 'Cette réponse ne rapporte déjà aucun point' };
+    }
+
+    const key = Room.challengeKey(targetPlayerId, categoryKey);
+    const voters = this.round.challenges.get(key) ?? new Set();
+    if (voters.has(playerId)) voters.delete(playerId);
+    else voters.add(playerId);
+    if (voters.size === 0) this.round.challenges.delete(key);
+    else this.round.challenges.set(key, voters);
+    this.round.ready.delete(playerId); // un nouveau vote relance sa décision
+    this.touch();
+    return { ok: true, challenges: voters.size };
+  }
+
+  /** « Prêt » : quand tous les joueurs connectés le sont, on tranche. */
+  markReady(playerId) {
+    if (this.phase !== PHASE.VOTING || !this.round) {
+      return { ok: false, ignored: true, error: 'Aucun vote en cours' };
+    }
+    if (!this.players.has(playerId)) return { ok: false, error: 'Joueur inconnu' };
+    this.round.ready.add(playerId);
+    this.touch();
+    if (this.everyoneReady()) return this.finalizeRound();
+    return { ok: true, waiting: true };
+  }
+
+  everyoneReady() {
+    const present = this.playerList.filter((p) => p.connected);
+    const expected = present.length > 0 ? present : this.playerList;
+    return expected.every((p) => this.round.ready.has(p.id));
+  }
+
+  /**
+   * Applique les contestations retenues aux verdicts, puis le barème.
+   * Les points ne sont attribués qu'ici, une seule fois.
+   */
+  finalizeRound() {
+    if (!this.round) return { ok: false, error: 'Aucune manche' };
+    if (this.round.scored) return { ok: true, already: true };
+
+    const adjusted = new Map(this.round.verdicts ?? []);
+    const refused = [];
+    for (const [key, voters] of this.round.challenges) {
+      const [targetPlayerId, categoryKey] = key.split('::');
+      const needed = this.requiredChallenges(targetPlayerId);
+      if (voters.size < needed) continue;
+      const verdict = adjusted.get(key);
+      if (!verdict) continue;
+      adjusted.set(key, {
+        ...verdict,
+        status: 'invalide',
+        challenged: voters.size,
+        reason: `Refusée par le salon (${voters.size} contestation${voters.size > 1 ? 's' : ''})`,
+      });
+      refused.push({ targetPlayerId, categoryKey, votes: voters.size });
+    }
+
+    const results = this.computeResults(adjusted);
     this.round.results = results;
-    this.round.aiSource = source;
-    this.round.aiError = error;
+    this.round.refused = refused;
     this.round.scored = true;
 
     for (const player of this.players.values()) {
@@ -300,10 +422,11 @@ export class Room {
       letter: this.round.letter,
       closeReason: this.round.closeReason,
       closedBy: this.round.closedBy,
-      source,
-      error,
+      source: this.round.aiSource,
+      error: this.round.aiError,
       totals: results.totals,
       categories: results.categories,
+      refused,
     };
 
     this.phase = this.round.index >= TOTAL_ROUNDS - 1 ? PHASE.FINISHED : PHASE.RESULTS;
@@ -368,6 +491,11 @@ export class Room {
       t - this.round.validationStartedAt > VALIDATION_TIMEOUT_MS
     ) {
       effects.push({ type: 'validation-stalled' });
+    }
+    // Fin du temps de contestation : le salon a tranché, on applique le barème.
+    if (this.phase === PHASE.VOTING && this.round?.voteEndsAt && t >= this.round.voteEndsAt) {
+      this.finalizeRound();
+      effects.push({ type: 'vote-closed' });
     }
     return effects;
   }
@@ -437,12 +565,46 @@ export class Room {
         aiSource: this.round.aiSource,
         aiError: this.round.aiError,
       };
+      if (this.phase === PHASE.VOTING && this.round.provisional) {
+        const mine = forPlayerId;
+        state.vote = {
+          endsAt: this.round.voteEndsAt,
+          remainingMs: Math.max(0, (this.round.voteEndsAt ?? t) - t),
+          readyIds: [...this.round.ready],
+          readyCount: this.round.ready.size,
+          playerCount: this.players.size,
+          categories: this.round.provisional.categories.map((category) => ({
+            key: category.key,
+            label: category.label,
+            icon: category.icon,
+            entries: category.entries.map((entry) => {
+              const key = Room.challengeKey(entry.playerId, category.key);
+              const voters = this.round.challenges.get(key);
+              return {
+                playerId: entry.playerId,
+                raw: entry.raw,
+                recognized: entry.recognized,
+                status: entry.status,
+                reason: entry.reason,
+                counted: entry.counted,
+                flagged: entry.flagged,
+                challenges: voters?.size ?? 0,
+                required: this.requiredChallenges(entry.playerId),
+                challengedByMe: Boolean(mine && voters?.has(mine)),
+                canChallenge: Boolean(mine && entry.counted && entry.playerId !== mine),
+              };
+            }),
+          })),
+        };
+      }
+
       if (this.round.results) {
         state.results = {
           letter: this.round.results.letter,
           categories: this.round.results.categories,
           totals: this.round.results.totals,
           flaggedCount: this.round.results.flaggedCount,
+          refused: this.round.refused ?? [],
           roundIndex: this.round.index,
           isFinalRound: this.round.index >= TOTAL_ROUNDS - 1,
         };
