@@ -10,7 +10,35 @@ d'afficher et d'envoyer des intentions.
 
 ```bash
 npm install
-ANTHROPIC_API_KEY=sk-ant-... npm start
+cp .env.example .env     # puis coller la clé dans .env
+npm start
+```
+
+`npm start` lit automatiquement le fichier `.env` s'il existe. Ce fichier est
+ignoré par git : la clé n'arrive jamais sur GitHub.
+
+### Où trouver la clé d'API
+
+1. Aller sur [console.anthropic.com](https://console.anthropic.com) et se
+   connecter (compte séparé d'un abonnement Claude.ai : l'API se paie à
+   l'usage, il faut créditer le compte dans **Billing**).
+2. **Settings → API keys → Create Key**.
+3. Copier la clé (`sk-ant-...`) — elle n'est affichée qu'une seule fois.
+4. La coller dans `.env` en local, et dans l'interface de l'hébergeur en ligne
+   (jamais dans le dépôt).
+
+Au démarrage, le serveur affiche `IA active (claude-opus-5)` ou
+`IA inactive — ANTHROPIC_API_KEY absente, mode secours`, et l'accueil du jeu
+indique la même chose aux joueurs.
+
+**Ce que ça coûte** : une manche = un appel (plus un second si des réponses
+restent douteuses). Avec 8 joueurs et `claude-opus-5`, compter quelques
+dizaines de centimes par manche, soit l'ordre de quelques euros pour une
+partie de 15 manches ; nettement moins à 2 ou 3 joueurs. Pour diviser la note,
+basculer sur un modèle moins cher :
+
+```bash
+BACRUSH_AI_MODEL=claude-sonnet-5
 ```
 
 Le démarrage affiche deux adresses :
