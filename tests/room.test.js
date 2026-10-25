@@ -82,6 +82,25 @@ test('une rubrique remplie d\'espaces ne compte pas comme remplie', () => {
   assert.equal(room.requestFinish(alice.id).ok, false);
 });
 
+test('effacer une réponse la retire vraiment et referme le bouton FIN', () => {
+  const { room, players } = setup();
+  const [alice] = players;
+  room.saveAnswers(alice.id, fullAnswers(room.round.letter));
+  assert.equal(room.hasAllAnswers(alice.id), true);
+
+  // Le joueur vide une rubrique : l'effacement doit être enregistré tel quel.
+  room.saveAnswers(alice.id, { ville: '' });
+  assert.equal(room.answersOf(alice.id).ville, '');
+  assert.equal(room.filledCount(alice.id), 7);
+  assert.equal(room.requestFinish(alice.id).ok, false, 'FIN redevient impossible');
+  assert.equal(room.publicState(alice.id).you.canFinish, false);
+
+  // Et il peut la remplir de nouveau.
+  room.saveAnswers(alice.id, { ville: 'Marseille' });
+  assert.equal(room.filledCount(alice.id), 8);
+  assert.equal(room.publicState(alice.id).you.canFinish, true);
+});
+
 // §15.5
 test('FIN arrête le chronomètre pour tous et verrouille les réponses', () => {
   const { room, clock, players } = setup();

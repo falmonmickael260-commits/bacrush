@@ -404,7 +404,8 @@ function renderArbitrationPicker() {
 function renderRound() {
   const round = state.round;
   const roundKey = `${state.gameNumber}-${round.index}`;
-  if (roundKey !== renderedRoundKey) {
+  const freshForm = roundKey !== renderedRoundKey;
+  if (freshForm) {
     renderedRoundKey = roundKey;
     buildForm();
     lastSentSnapshot = '';
@@ -417,15 +418,22 @@ function renderRound() {
   $('letter').textContent = round.letter;
   $('letter-pill').textContent = round.letter; // rappel de la lettre sur mobile
 
-  // Restaure les réponses déjà enregistrées côté serveur (rechargement,
-  // reconnexion) sans écraser le champ en cours d'édition.
-  const saved = state.you?.answers ?? {};
+  // Les réponses enregistrées ne sont réinjectées qu'au premier affichage de la
+  // manche (ouverture, rechargement de page, reconnexion). Ensuite, le champ
+  // appartient au joueur : sans cette distinction, chaque état reçu du serveur
+  // réécrirait une valeur qu'il vient d'effacer, tant que l'enregistrement
+  // différé n'est pas parti.
+  if (freshForm) {
+    const saved = state.you?.answers ?? {};
+    for (const category of config.categories) {
+      const input = $(`in-${category.key}`);
+      if (!input || document.activeElement === input) continue;
+      input.value = saved[category.key] ?? '';
+    }
+  }
   for (const category of config.categories) {
     const input = $(`in-${category.key}`);
-    if (!input || document.activeElement === input) continue;
-    const value = saved[category.key] ?? '';
-    if (input.value !== value && (input.value === '' || value !== '')) input.value = value;
-    input.disabled = state.phase !== 'playing' || round.locked;
+    if (input) input.disabled = state.phase !== 'playing' || round.locked;
   }
 
   $('letter-caption').textContent =
