@@ -241,3 +241,63 @@ test('le score maximal d\'une manche est de 16 points (8 rubriques × 2)', () =>
   assert.equal(result.totals.p1, 16);
   assert.equal(result.totals.p2, 0);
 });
+
+// --- Rapprochement des mots que le serveur n'a pas identifiés ---------------
+import { createValidator } from '../src/ai/validator.js';
+
+const offline = createValidator({ hasCredentials: () => false, logger: { warn() {} } });
+
+async function offlineRound(categoryKey, a, b, letter = 'M') {
+  const players = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }];
+  const answers = { p1: { [categoryKey]: a }, p2: { [categoryKey]: b } };
+  const { verdicts } = await offline({ letter, players, answers });
+  const result = scoreRound({ letter, players, answers, verdicts });
+  const category = result.categories.find((c) => c.key === categoryKey);
+  return {
+    groupes: category.groups.length,
+    points: category.entries.map((e) => e.points),
+    statuts: category.entries.map((e) => e.status),
+  };
+}
+
+test('une faute de frappe sur un mot inconnu vaut une seule réponse', async () => {
+  const ville = await offlineRound('ville', 'Mazamet', 'Mazamett');
+  assert.equal(ville.groupes, 1, 'les deux écritures désignent la même commune');
+  assert.deepEqual(ville.points, [1, 1]);
+
+  const metier = await offlineRound('metier', 'Mareyeur', 'Mareyeure');
+  assert.deepEqual(metier.points, [1, 1]);
+});
+
+test('deux mots inconnus réellement différents restent séparés', async () => {
+  const villes = await offlineRound('ville', 'Marseille', 'Montpellier');
+  assert.equal(villes.groupes, 2);
+  assert.deepEqual(villes.points, [2, 2]);
+
+  const courts = await offlineRound('ville', 'Melun', 'Mimizan');
+  assert.equal(courts.groupes, 2, 'deux communes inconnues restent distinctes');
+
+  // Les mots de moins de 7 lettres ne sont jamais rapprochés, même à une faute.
+  const tresCourts = await offlineRound('ville', 'Meung', 'Meaux');
+  assert.equal(tresCourts.groupes, 2);
+});
+
+test('les prénoms ne sont jamais rapprochés à une faute près', async () => {
+  const { groupes, points } = await offlineRound('prenom_fille', 'Maryline', 'Marylise');
+  assert.equal(groupes, 2, 'deux prénoms distincts séparés par une lettre');
+  assert.deepEqual(points, [2, 2]);
+});
+
+test('une réponse n\'est pas refusée pour ressembler à un mot d\'une autre rubrique', async () => {
+  // « Mandoline » (objet) ressemble à « Mandarine » (fruit) : ce n'est pas un motif de refus.
+  const { statuts, points } = await offlineRound('objet', 'Mandoline', 'Mandolines');
+  assert.ok(!statuts.includes(STATUS.INVALID), `statuts obtenus : ${statuts.join(', ')}`);
+  assert.deepEqual(points, [1, 1]);
+});
+
+test('un mot appartenant exactement à une autre rubrique reste refusé', async () => {
+  const { statuts, points } = await offlineRound('metier', 'Mouton', 'Maçon');
+  assert.equal(statuts[0], STATUS.INVALID, 'Mouton est un animal, pas un métier');
+  assert.equal(points[0], 0);
+  assert.equal(points[1], 2);
+});

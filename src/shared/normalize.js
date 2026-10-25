@@ -85,3 +85,23 @@ export function sameWord(a, b) {
   if (Math.abs(ka.length - kb.length) > tol) return false;
   return levenshtein(ka, kb) <= tol;
 }
+
+/**
+ * Deux réponses non reconnues désignent-elles vraisemblablement le même mot ?
+ *
+ * Filet de sécurité du mode secours UNIQUEMENT : quand aucun des deux mots
+ * n'a pu être identifié, une faute de frappe ne doit pas valoir 2 points à
+ * chacun. Volontairement très conservateur — mots longs, trois premières
+ * lettres identiques, une seule faute — pour ne jamais fusionner deux mots
+ * réellement différents.
+ */
+export function likelySameAnswer(a, b) {
+  const ka = normalizeKey(a);
+  const kb = normalizeKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  if (Math.min(ka.length, kb.length) < 7) return false;
+  if (ka.slice(0, 3) !== kb.slice(0, 3)) return false;
+  if (Math.abs(ka.length - kb.length) > 1) return false;
+  return levenshtein(ka, kb) <= 1;
+}

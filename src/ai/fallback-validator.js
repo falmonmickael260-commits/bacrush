@@ -15,13 +15,20 @@ const INDEX = Object.fromEntries(
   ]),
 );
 
-function lookup(categoryKey, raw) {
+/**
+ * @param {boolean} exactOnly  Pour accuser une réponse d'appartenir à une AUTRE
+ *   rubrique, on exige une correspondance exacte : un rapprochement approximatif
+ *   suffirait à refuser « Mandoline » (objet) parce qu'il ressemble à
+ *   « Mandarine » (fruit).
+ */
+function lookup(categoryKey, raw, { exactOnly = false } = {}) {
   const index = INDEX[categoryKey];
   if (!index) return null;
   const key = normalizeKey(raw);
   if (!key) return null;
   const exact = index.get(key);
   if (exact) return { word: exact, exact: true };
+  if (exactOnly) return null;
   for (const [candidateKey, word] of index) {
     if (candidateKey[0] !== key[0]) continue; // jamais de correction de la 1re lettre
     if (sameWord(key, candidateKey)) return { word, exact: false };
@@ -82,7 +89,7 @@ export function judgeOffline({ letter, items }) {
     // 3. Reconnue… mais dans une AUTRE rubrique : hors catégorie.
     for (const otherKey of CATEGORY_KEYS) {
       if (otherKey === item.categoryKey) continue;
-      const otherHit = lookup(otherKey, item.raw);
+      const otherHit = lookup(otherKey, item.raw, { exactOnly: true });
       if (!otherHit) continue;
       const otherLabel = CATEGORY_BY_KEY.get(otherKey).label;
       return {

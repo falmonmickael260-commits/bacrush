@@ -86,9 +86,11 @@ test('un salon plein joue la même manche et reçoit les mêmes résultats', asy
   const letter = host.last.round.letter;
   const commune = `${letter}ville`;
   const sameCount = Math.floor(MAX_PLAYERS / 2);
+  // Les réponses « uniques » doivent différer d'au moins deux caractères :
+  // à une seule faute près, le serveur les rapprocherait comme une coquille.
   await Promise.all(
     clients.map((c, index) =>
-      c.sendAnswers({ ville: index < sameCount ? commune : `${commune}${index}` }),
+      c.sendAnswers({ ville: index < sameCount ? commune : `${letter}zone${index}${index}` }),
     ),
   );
   await Promise.all(

@@ -1,5 +1,5 @@
 import { CATEGORIES } from '../shared/categories.js';
-import { firstLetterOf, isBlank, normalizeKey } from '../shared/normalize.js';
+import { firstLetterOf, isBlank, likelySameAnswer, normalizeKey } from '../shared/normalize.js';
 
 // Barème FIXE, appliqué par le code du serveur après validation des réponses.
 // L'IA ne calcule jamais les points : elle valide et identifie les équivalences.
@@ -18,6 +18,15 @@ export const STATUS = Object.freeze({
  *  - 'lenient' (défaut) : comptée comme valide, signalée « À vérifier »
  *  - 'strict'           : comptée comme invalide
  */
+/**
+ * Rubriques où un rapprochement « à une faute près » est acceptable entre deux
+ * mots inconnus. Les prénoms en sont exclus : Marie et Maria, Mathilde et
+ * Mathilda sont de vrais prénoms distincts, séparés par une seule lettre.
+ */
+const FUZZY_GROUPING_CATEGORIES = new Set([
+  'ville', 'pays', 'metier', 'animal', 'fruit_legume', 'objet',
+]);
+
 export function uncertainCountsAsValid(policy = 'lenient') {
   return policy !== 'strict';
 }
@@ -90,6 +99,11 @@ export function scoreRound({ letter, players, answers, verdicts, uncertainPolicy
       }
 
       entry.recognized = verdict.recognized || String(raw).trim();
+      // Un rapprochement approximatif n'est permis que si la réponse n'a pas été
+      // identifiée : dès que l'IA a nommé l'entité, c'est son verdict qui tranche.
+      entry.fuzzyGroupable =
+        verdict.status === STATUS.UNCERTAIN ||
+        String(verdict.source ?? '').startsWith('secours');
       entry.reason = verdict.reason || '';
       entry.confidence = Number.isFinite(verdict.confidence) ? verdict.confidence : 0;
       entry.searched = Boolean(verdict.searched);
@@ -161,6 +175,32 @@ export function scoreRound({ letter, players, answers, verdicts, uncertainPolicy
       }
       group.playerIds.push(entry.playerId);
       entry.groupId = group.id;
+    }
+
+    // --- Rapprochement des mots non identifiés -------------------------------
+    // Sans cette passe, une faute de frappe sur un mot inconnu du serveur
+    // vaudrait 2 points à chacun des deux joueurs au lieu de 1.
+    if (FUZZY_GROUPING_CATEGORIES.has(category.key)) {
+      for (let i = 0; i < groups.length; i++) {
+        const target = groups[i];
+        if (!target) continue;
+        for (let j = i + 1; j < groups.length; j++) {
+          const other = groups[j];
+          if (!other) continue;
+          const mergeable = [...target.playerIds, ...other.playerIds].every((pid) =>
+            entries.find((e) => e.playerId === pid)?.fuzzyGroupable,
+          );
+          if (!mergeable || !likelySameAnswer(target.label, other.label)) continue;
+          target.playerIds.push(...other.playerIds);
+          for (const entry of entries) {
+            if (entry.groupId === other.id) entry.groupId = target.id;
+          }
+          groups[j] = null;
+        }
+      }
+      for (let i = groups.length - 1; i >= 0; i--) {
+        if (!groups[i]) groups.splice(i, 1);
+      }
     }
 
     // --- Barème --------------------------------------------------------------
