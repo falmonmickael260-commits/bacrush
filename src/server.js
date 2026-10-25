@@ -278,6 +278,14 @@ async function handleApi(req, res, url, hub) {
         hub.broadcast(room);
         return sendJSON(res, result.ok ? 200 : 409, result);
       }
+      case 'selfscore': {
+        const result = room.selfScore(player.id, {
+          categoryKey: String(body.categoryKey ?? ''),
+          points: Number(body.points),
+        });
+        hub.broadcast(room);
+        return sendJSON(res, result.ok ? 200 : 409, result);
+      }
       case 'challenge': {
         const result = room.toggleChallenge(player.id, {
           targetPlayerId: String(body.targetPlayerId ?? ''),

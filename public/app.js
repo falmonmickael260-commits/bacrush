@@ -175,6 +175,7 @@ async function setArbitration(mode) {
 
 $('mode-vote').addEventListener('click', () => setArbitration('vote'));
 $('mode-referee').addEventListener('click', () => setArbitration('referee'));
+$('mode-self').addEventListener('click', () => setArbitration('self'));
 $('referee-select').addEventListener('change', () => setArbitration('referee'));
 
 $('lobby-code').addEventListener('click', () => {
@@ -194,6 +195,16 @@ $('btn-ready').addEventListener('click', async () => {
   } catch (err) { toast(err.message); }
   setTimeout(() => { $('btn-ready').disabled = false; }, 600);
 });
+
+async function selfScore(categoryKey, points) {
+  try {
+    await api(`/api/rooms/${session.code}/selfscore`, {
+      token: session.token,
+      categoryKey,
+      points,
+    });
+  } catch (err) { toast(err.message); }
+}
 
 async function decide(targetPlayerId, categoryKey, accept) {
   try {
@@ -374,20 +385,23 @@ function renderLobby() {
 function renderArbitrationPicker() {
   const arbitration = state.arbitration ?? { mode: 'vote' };
   const isHost = Boolean(state.you?.isHost);
-  const isReferee = arbitration.mode === 'referee';
+  const mode = arbitration.mode;
 
   $('mode-picker').hidden = !isHost;
   $('mode-readonly').hidden = isHost;
   if (!isHost) {
-    $('mode-readonly').textContent = isReferee
-      ? `Arbitrage : ${arbitration.refereeName ?? '—'} tranche les réponses`
-      : 'Arbitrage : le salon vote';
+    $('mode-readonly').textContent = {
+      referee: `Arbitrage : ${arbitration.refereeName ?? '—'} tranche les réponses`,
+      self: 'Arbitrage : chacun se note lui-même',
+      vote: 'Arbitrage : le salon vote',
+    }[mode] ?? '';
     return;
   }
 
-  $('mode-vote').classList.toggle('is-on', !isReferee);
-  $('mode-referee').classList.toggle('is-on', isReferee);
-  $('referee-field').hidden = !isReferee;
+  $('mode-vote').classList.toggle('is-on', mode === 'vote');
+  $('mode-referee').classList.toggle('is-on', mode === 'referee');
+  $('mode-self').classList.toggle('is-on', mode === 'self');
+  $('referee-field').hidden = mode !== 'referee';
 
   const select = $('referee-select');
   const wanted = arbitration.refereeId ?? state.you?.id;
@@ -477,6 +491,7 @@ function renderVoting() {
   const vote = state.vote;
   if (!vote) return;
   const refereeMode = vote.mode === 'referee';
+  const selfMode = vote.mode === 'self';
   $('vote-letter').textContent = state.round?.letter ?? '';
 
   const amReady = vote.readyIds.includes(state.you?.id);
@@ -498,6 +513,18 @@ function renderVoting() {
     $('vote-hint').textContent = vote.iAmReferee
       ? 'Sans décision de ta part, le verdict automatique s\'applique.'
       : 'La manche se termine seule à la fin du compte à rebours.';
+  } else if (selfMode) {
+    $('vote-eyebrow').innerHTML = `Notation — lettre <b id="vote-letter">${escapeHtml(state.round?.letter ?? '')}</b>`;
+    $('vote-title').textContent = 'Compte tes points';
+    $('vote-intro').textContent =
+      '2 si tu es le seul à avoir cette réponse, 1 si quelqu\'un d\'autre l\'a aussi, 0 si elle ne compte pas. Les réponses de tout le monde sont affichées pour te décider.';
+    $('vote-ready-count').textContent = `${vote.readyCount} / ${vote.playerCount} prêts`;
+    button.hidden = false;
+    button.textContent = amReady ? 'EN ATTENTE DES AUTRES…' : 'J\'AI FINI';
+    button.classList.toggle('btn-ready-on', amReady);
+    button.classList.toggle('btn-primary', !amReady);
+    $('vote-hint').textContent =
+      'Sans choix de ta part, les points calculés automatiquement s\'appliquent.';
   } else {
     $('vote-eyebrow').innerHTML = `Contestation — lettre <b id="vote-letter">${escapeHtml(state.round?.letter ?? '')}</b>`;
     $('vote-title').textContent = 'Une réponse vous semble fausse ?';
@@ -518,7 +545,9 @@ function renderVoting() {
   for (const category of vote.categories) {
     // En mode vote, on masque les rubriques sans point en jeu : rien à contester.
     // En mode arbitre, il peut repêcher une réponse refusée : on montre tout.
-    const hasSomething = category.entries.some((e) => (refereeMode ? e.raw : e.counted));
+    const hasSomething = category.entries.some((e) =>
+      refereeMode || selfMode ? e.raw : e.counted,
+    );
     if (!hasSomething) continue;
     const block = document.createElement('section');
     block.className = 'vote-cat';
@@ -544,6 +573,7 @@ function renderVoting() {
           ${entry.challenges > 0 ? `<span class="vote-count">${entry.challenges} / ${entry.required} voix</span>` : ''}
         </span>`;
 
+      row.classList.toggle('is-mine', selfMode && entry.playerId === state.you?.id);
       row.classList.toggle('is-accepted', entry.decision === true);
       row.classList.toggle('is-challenged', entry.challenges > 0 || entry.decision === false);
       const actions = row.querySelector('.vote-actions');
@@ -555,6 +585,32 @@ function renderVoting() {
         action.textContent = entry.challengedByMe ? 'Contestée' : 'Contester';
         action.addEventListener('click', () => toggleChallenge(entry.playerId, category.key));
         actions.appendChild(action);
+      }
+
+      if (entry.canSelfScore) {
+        const group = document.createElement('span');
+        group.className = 'self-points';
+        for (const points of [0, 1, 2]) {
+          const chosen = entry.selfPoints === null
+            ? entry.proposedPoints === points
+            : entry.selfPoints === points;
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.dataset.points = String(points);
+          option.className =
+            `btn btn-point${entry.selfPoints === points ? ' is-on' : ''}` +
+            (entry.selfPoints === null && chosen ? ' is-suggested' : '');
+          option.textContent = String(points);
+          option.addEventListener('click', () => selfScore(category.key, points));
+          group.appendChild(option);
+        }
+        actions.appendChild(group);
+        if (entry.selfPoints === null) {
+          const hint = document.createElement('span');
+          hint.className = 'self-hint';
+          hint.textContent = 'proposé';
+          actions.insertBefore(hint, group);
+        }
       }
 
       if (entry.canDecide) {

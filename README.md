@@ -109,7 +109,7 @@ différents, avec des lettres et des scores distincts.
 | Bouton FIN | invisible tant que les 8 rubriques ne sont pas remplies, revérifié côté serveur |
 | Clôture globale | un seul clic accepté, la manche se termine pour tout le monde |
 | Fin automatique à 00:00 | balayage serveur toutes les 250 ms, sans dépendre d'un navigateur ouvert |
-| Arbitrage humain | vote du salon (60 s, majorité) ou arbitre désigné (2 min), au choix de l'hôte |
+| Arbitrage humain | vote du salon (60 s), notation libre (90 s) ou arbitre désigné (2 min), au choix de l'hôte |
 | Barème 2 / 1 / 0 | `src/game/scoring.js`, appliqué après le vote, jamais par l'IA |
 
 ## L'arbitrage humain
@@ -124,19 +124,25 @@ réponse tombe si **la majorité stricte des autres joueurs** la conteste : 2
 voix sur 2 autres joueurs, 2 sur 3, 4 sur 7. Le vote se clôt dès que tout le
 monde a appuyé sur « Prêt ».
 
+**Chacun se note** — chaque joueur s'attribue lui-même 0, 1 ou 2 sur chacune
+de ses réponses, comme à la maison. Les réponses de tout le monde sont
+affichées pour décider entre 1 et 2, et le calcul automatique est proposé par
+défaut : il suffit de le confirmer. 90 secondes, puis « J'ai fini ».
+
 **Un arbitre** — l'hôte désigne un joueur. Il joue normalement et marque des
 points, mais c'est lui seul qui tranche : ✓ pour repêcher une réponse que la
 machine n'a pas su valider, ✕ pour en refuser une. Il dispose de 2 minutes, et
 juge aussi ses propres réponses. Sans décision de sa part, le verdict
 automatique s'applique. S'il quitte le salon, la partie repasse au vote.
 
-Une limite vaut pour les deux formules : **personne ne peut repêcher une
-réponse qui ne commence pas par la lettre imposée**, ni l'arbitre ni le salon.
-Cette règle appartient au serveur.
+Une limite vaut pour le vote et l'arbitre : **personne ne peut repêcher une
+réponse qui ne commence pas par la lettre imposée**. Cette règle appartient au
+serveur. La notation libre, elle, fait confiance aux joueurs de bout en bout —
+c'est son principe.
 
-Les deux formules se terminent seules à la fin du compte à rebours, et un
-joueur déconnecté ne bloque personne. En solo, il n'y a ni vote ni arbitre :
-les points s'appliquent directement.
+Les trois formules se terminent seules à la fin du compte à rebours, et un
+joueur déconnecté ne bloque personne. En solo, les points s'appliquent
+directement.
 
 C'est ce qui rend le jeu **jouable sans clé d'API** : le mode secours valide ce
 qu'il reconnaît, les joueurs tranchent le reste, comme à la vraie table.
@@ -220,7 +226,7 @@ L'interface est pensée pour être jouée au pouce :
 ## Tests
 
 ```bash
-npm test          # 91 tests, sans réseau ni clé d'API
+npm test          # 104 tests, sans réseau ni clé d'API
 npm run test:ai   # ajoute les tests de l'IA réelle (nécessite ANTHROPIC_API_KEY)
 ```
 

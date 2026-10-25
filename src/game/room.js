@@ -2,7 +2,7 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { CATEGORY_KEYS } from '../shared/categories.js';
 import { firstLetterOf, isBlank } from '../shared/normalize.js';
 import { drawLetters, TOTAL_ROUNDS } from './letters.js';
-import { scoreRound } from './scoring.js';
+import { makeVerdictKey, scoreRound } from './scoring.js';
 
 export const ROUND_DURATION_MS = 240_000; // 4 minutes — durée officielle d'une manche
 export const REVEAL_DURATION_MS = 3_200; // animation de révélation de la lettre
@@ -10,11 +10,15 @@ export const VALIDATION_TIMEOUT_MS = 90_000; // garde-fou si l'IA ne répond jam
 export const MAX_PLAYERS = 10; // capacité d'un salon
 export const VOTE_DURATION_MS = 60_000; // temps de contestation après la validation
 export const REFEREE_DURATION_MS = 120_000; // l'arbitre relit toutes les réponses : plus de temps
+export const SELF_DURATION_MS = 90_000; // chacun se note : un seul joueur à relire, mais 8 rubriques
 
 export const ARBITRATION = Object.freeze({
   VOTE: 'vote', // le salon conteste, la majorité tranche
   REFEREE: 'referee', // un arbitre désigné accepte ou refuse
+  SELF: 'self', // chacun s'attribue 0, 1 ou 2 sur ses propres réponses
 });
+
+export const SELF_POINTS = Object.freeze([0, 1, 2]);
 
 export const PHASE = Object.freeze({
   LOBBY: 'lobby',
@@ -141,7 +145,7 @@ export class Room {
     if (this.phase !== PHASE.LOBBY) {
       return { ok: false, error: 'La partie est déjà lancée' };
     }
-    if (mode !== ARBITRATION.VOTE && mode !== ARBITRATION.REFEREE) {
+    if (!Object.values(ARBITRATION).includes(mode)) {
       return { ok: false, error: 'Mode inconnu' };
     }
     if (mode === ARBITRATION.REFEREE) {
@@ -208,6 +212,7 @@ export class Room {
       provisional: null, // résultats avant le vote du salon
       challenges: new Map(), // "joueur::rubrique" -> Set de contestataires (mode vote)
       decisions: new Map(), // "joueur::rubrique" -> true (accepté) | false (refusé) par l'arbitre
+      selfScores: new Map(), // "joueur::rubrique" -> 0 | 1 | 2 choisi par le joueur lui-même
       ready: new Set(),
       voteEndsAt: null,
       results: null,
@@ -347,9 +352,7 @@ export class Room {
     if (this.players.size >= 2) {
       this.ensureRefereeStillHere();
       this.phase = PHASE.VOTING;
-      this.round.voteEndsAt =
-        this.now() +
-        (this.arbitrationMode === ARBITRATION.REFEREE ? REFEREE_DURATION_MS : VOTE_DURATION_MS);
+      this.round.voteEndsAt = this.now() + this.arbitrationDurationMs();
       this.touch();
       return { ok: true, voting: true };
     }
@@ -413,6 +416,34 @@ export class Room {
     this.round.ready.delete(playerId); // un nouveau vote relance sa décision
     this.touch();
     return { ok: true, challenges: voters.size };
+  }
+
+  arbitrationDurationMs() {
+    if (this.arbitrationMode === ARBITRATION.REFEREE) return REFEREE_DURATION_MS;
+    if (this.arbitrationMode === ARBITRATION.SELF) return SELF_DURATION_MS;
+    return VOTE_DURATION_MS;
+  }
+
+  /**
+   * Chacun se note : un joueur s'attribue 0, 1 ou 2 points sur SA réponse.
+   * Sans choix de sa part, le calcul automatique s'applique.
+   */
+  selfScore(playerId, { categoryKey, points }) {
+    if (this.phase !== PHASE.VOTING || !this.round) {
+      return { ok: false, error: 'Aucune notation en cours' };
+    }
+    if (this.arbitrationMode !== ARBITRATION.SELF) {
+      return { ok: false, error: "Cette partie n'est pas en notation libre" };
+    }
+    if (!this.players.has(playerId)) return { ok: false, error: 'Joueur inconnu' };
+    if (!CATEGORY_KEYS.includes(categoryKey)) return { ok: false, error: 'Rubrique inconnue' };
+    if (!SELF_POINTS.includes(points)) return { ok: false, error: 'Points invalides' };
+    if (isBlank(this.answersOf(playerId)[categoryKey])) {
+      return { ok: false, error: 'Aucune réponse à noter' };
+    }
+    this.round.selfScores.set(makeVerdictKey(playerId, categoryKey), points);
+    this.touch();
+    return { ok: true, points };
   }
 
   /**
@@ -537,6 +568,25 @@ export class Room {
     }
 
     const results = this.computeResults(adjusted);
+
+    // Notation libre : le choix du joueur remplace le calcul sur SES réponses.
+    if (this.arbitrationMode === ARBITRATION.SELF && this.round.selfScores.size > 0) {
+      for (const category of results.categories) {
+        for (const entry of category.entries) {
+          const chosen = this.round.selfScores.get(makeVerdictKey(entry.playerId, category.key));
+          if (chosen === undefined || isBlank(entry.raw)) continue;
+          entry.points = chosen;
+          entry.selfScored = true;
+        }
+      }
+      for (const id of Object.keys(results.totals)) results.totals[id] = 0;
+      for (const category of results.categories) {
+        for (const entry of category.entries) {
+          results.totals[entry.playerId] = (results.totals[entry.playerId] ?? 0) + entry.points;
+        }
+      }
+    }
+
     this.round.results = results;
     this.round.refused = refused;
     this.round.scored = true;
@@ -734,11 +784,19 @@ export class Room {
                 required: this.requiredChallenges(entry.playerId),
                 challengedByMe: Boolean(mine && voters?.has(mine)),
                 canChallenge: Boolean(
-                  !refereeMode && mine && entry.counted && entry.playerId !== mine,
+                  this.arbitrationMode === ARBITRATION.VOTE &&
+                    mine &&
+                    entry.counted &&
+                    entry.playerId !== mine,
                 ),
                 decision: decision === undefined ? null : decision,
                 canDecide: Boolean(refereeMode && isReferee && entry.raw),
                 canAccept: refereeMode ? this.canRefereeAccept(entry) : false,
+                selfPoints: this.round.selfScores.get(key) ?? null,
+                proposedPoints: entry.points,
+                canSelfScore: Boolean(
+                  this.arbitrationMode === ARBITRATION.SELF && mine === entry.playerId && entry.raw,
+                ),
               };
             }),
           })),

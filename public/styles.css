@@ -198,8 +198,8 @@ input[type="text"]:focus {
 
 /* ------------------------------------------------------- choix d'arbitrage */
 .mode-picker { text-align: left; margin: 4px 0 18px; }
-.mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-@media (max-width: 480px) { .mode-options { grid-template-columns: 1fr; } }
+.mode-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+@media (max-width: 640px) { .mode-options { grid-template-columns: 1fr; } }
 .mode-option {
   appearance: none;
   font: inherit;
@@ -259,6 +259,26 @@ select {
 .btn-refuse { border-color: rgba(251, 113, 133, 0.45); color: var(--bad); }
 .btn-refuse.is-on { background: var(--bad); border-color: var(--bad); color: #2a0710; }
 .vote-row.is-accepted { background: rgba(52, 211, 153, 0.09); }
+.vote-row.is-mine { background: rgba(124, 92, 255, 0.1); }
+
+/* notation libre : 0 / 1 / 2 sur ses propres réponses */
+.self-points { display: flex; gap: 6px; }
+.btn-point {
+  width: 42px;
+  min-height: 38px;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+}
+.btn-point.is-on { color: #0b0d1a; border-color: transparent; }
+.btn-point[data-points="0"].is-on { background: var(--bad); }
+.btn-point[data-points="1"].is-on { background: var(--warn); }
+.btn-point[data-points="2"].is-on { background: var(--ok); }
+.btn-point.is-suggested { border-color: var(--accent); color: var(--text); }
+.self-hint { font-size: 0.72rem; color: var(--muted); }
 .decision-note { font-size: 0.74rem; color: var(--muted); }
 
 /* ---------------------------------------------------------------- manche */
