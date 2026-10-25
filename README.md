@@ -1,6 +1,6 @@
 # BacRush — Petit Bac multijoueur, 15 manches, arbitrage par IA
 
-BacRush est un jeu de Petit Bac en ligne : un salon, **jusqu'à 8 joueurs**,
+BacRush est un jeu de Petit Bac en ligne : un salon, **jusqu'à 10 joueurs**,
 15 manches. Le serveur est la seule source de vérité — il tire les lettres,
 tient le chronomètre, enregistre les réponses, décide de la clôture, fait
 vérifier chaque mot par l'IA et applique le barème. Le navigateur se contente
@@ -32,7 +32,7 @@ Au démarrage, le serveur affiche `IA active (claude-opus-5)` ou
 indique la même chose aux joueurs.
 
 **Ce que ça coûte** : une manche = un appel (plus un second si des réponses
-restent douteuses). Avec 8 joueurs et `claude-opus-5`, compter quelques
+restent douteuses). Avec un salon plein et `claude-opus-5`, compter quelques
 dizaines de centimes par manche, soit l'ordre de quelques euros pour une
 partie de 15 manches ; nettement moins à 2 ou 3 joueurs. Pour diviser la note,
 basculer sur un modèle moins cher :
@@ -102,7 +102,7 @@ différents, avec des lettres et des scores distincts.
 
 | Règle | Mise en œuvre |
 |---|---|
-| Salon de 2 à 8 joueurs | capacité vérifiée côté serveur (`MAX_PLAYERS`), 9ᵉ joueur refusé |
+| Salon de 1 à 10 joueurs | capacité vérifiée côté serveur (`MAX_PLAYERS`), joueur suivant refusé |
 | 8 rubriques fixes | `src/shared/categories.js` |
 | 15 manches, 15 lettres distinctes | tirage unique par partie (`src/game/letters.js`), 20 lettres éligibles (K, Q, W, X, Y, Z écartées) |
 | 240 s par manche | horloge serveur (`src/game/room.js`), le navigateur n'affiche qu'un décompte dérivé |
@@ -220,7 +220,7 @@ L'interface est pensée pour être jouée au pouce :
 ## Tests
 
 ```bash
-npm test          # 89 tests, sans réseau ni clé d'API
+npm test          # 91 tests, sans réseau ni clé d'API
 npm run test:ai   # ajoute les tests de l'IA réelle (nécessite ANTHROPIC_API_KEY)
 ```
 

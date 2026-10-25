@@ -364,7 +364,7 @@ function renderLobby() {
   const isHost = Boolean(state.you?.isHost);
   $('btn-start').hidden = !isHost;
   $('btn-start').disabled = state.players.length < 1;
-  const capacity = state.maxPlayers ?? config.maxPlayers ?? 8;
+  const capacity = state.maxPlayers ?? config.maxPlayers ?? 10;
   $('lobby-count').textContent = `${state.players.length} / ${capacity} joueurs`;
   $('lobby-hint').textContent = isHost
     ? `${config.totalRounds} manches de ${config.roundDurationMs / 1000} s · lance quand tout le monde est là`
