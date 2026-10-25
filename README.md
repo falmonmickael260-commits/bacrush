@@ -1,7 +1,7 @@
 # BacRush — Petit Bac multijoueur, 15 manches, arbitrage par IA
 
 BacRush est un jeu de Petit Bac en ligne : un salon, **jusqu'à 10 joueurs**,
-15 manches. Le serveur est la seule source de vérité — il tire les lettres,
+**6, 12 ou 18 manches** au choix. Le serveur est la seule source de vérité — il tire les lettres,
 tient le chronomètre, enregistre les réponses, décide de la clôture, fait
 vérifier chaque mot par l'IA et applique le barème. Le navigateur se contente
 d'afficher et d'envoyer des intentions.
@@ -103,6 +103,8 @@ différents, avec des lettres et des scores distincts.
 | Règle | Mise en œuvre |
 |---|---|
 | Salon de 1 à 10 joueurs | capacité vérifiée côté serveur (`MAX_PLAYERS`), joueur suivant refusé |
+| Longueur de partie | 6, 12 ou 18 manches, choisie par l'hôte dans le salon |
+| Quitter en cours de route | le joueur disparaît du salon et du barème ; si l'hôte part, un autre prend sa place |
 | 8 rubriques fixes | `src/shared/categories.js` |
 | 15 manches, 15 lettres distinctes | tirage unique par partie (`src/game/letters.js`), 20 lettres éligibles (K, Q, W, X, Y, Z écartées) |
 | 240 s par manche | horloge serveur (`src/game/room.js`), le navigateur n'affiche qu'un décompte dérivé |
@@ -117,6 +119,14 @@ différents, avec des lettres et des scores distincts.
 Après la validation automatique et **avant que le moindre point ne soit
 attribué**, les joueurs ont le dernier mot. L'hôte choisit la formule dans le
 salon, avant le lancement ; elle vaut pour toute la partie.
+
+Chaque phase de correction dure **au moins deux minutes** — 2 min pour le vote,
+2 min 30 pour la notation libre, 3 min pour l'arbitre, qui relit tout le monde.
+L'hôte n'est jamais obligé d'attendre la fin : le bouton
+**« Tout est corrigé — manche suivante »** clôt les corrections dès que le
+salon est d'accord. C'est aussi lui qui lance la manche suivante depuis l'écran
+des résultats ; si son onglet est fermé, n'importe quel joueur peut prendre le
+relais pour que la partie ne reste pas en plan.
 
 **Le salon vote** (par défaut) — 60 secondes pour toucher « Contester » sur les
 réponses des autres, jamais sur les siennes ni sur une réponse déjà à zéro. Une
@@ -226,7 +236,7 @@ L'interface est pensée pour être jouée au pouce :
 ## Tests
 
 ```bash
-npm test          # 104 tests, sans réseau ni clé d'API
+npm test          # 117 tests, sans réseau ni clé d'API
 npm run test:ai   # ajoute les tests de l'IA réelle (nécessite ANTHROPIC_API_KEY)
 ```
 
