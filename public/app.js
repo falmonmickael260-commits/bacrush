@@ -276,8 +276,11 @@ async function quitGame(event) {
   toast('Tu peux revenir avec le code depuis cet appareil.', 5000);
 }
 
-$('btn-quit-lobby').addEventListener('click', quitGame);
-$('btn-quit-round').addEventListener('click', quitGame);
+// Une sortie est offerte depuis tous les écrans : personne ne doit rester
+// coincé à la fin d'une partie en attendant l'hôte.
+for (const id of ['btn-quit-lobby', 'btn-quit-round', 'btn-quit-results', 'btn-quit-final']) {
+  $(id).addEventListener('click', quitGame);
+}
 
 $('btn-close-corrections').addEventListener('click', async () => {
   $('btn-close-corrections').disabled = true;
@@ -985,6 +988,7 @@ function renderScores() {
 }
 
 function renderFinal() {
+  $('final-eyebrow').textContent = `Partie terminée — ${state.totalRounds} manches`;
   const ranked = [...state.players].sort((a, b) => b.score - a.score);
   const best = ranked[0];
   const tie = ranked.filter((p) => p.score === best?.score);
@@ -1016,7 +1020,11 @@ function renderFinal() {
       return `<tr><td>${escapeHtml(player.name)}</td>${cells}<td class="tot">${player.score}</td></tr>`;
     }).join('')}</tbody>`;
 
-  $('btn-newgame').hidden = !state.you?.isHost;
+  const isHost = Boolean(state.you?.isHost);
+  $('btn-newgame').hidden = !isHost;
+  $('final-hint').textContent = isHost
+    ? 'Les joueurs restants repartent pour une nouvelle partie.'
+    : "L'hôte peut relancer une partie — ou tu peux quitter.";
   startConfetti();
 }
 

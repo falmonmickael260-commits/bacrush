@@ -1,4 +1,4 @@
-# BacRush — Petit Bac multijoueur, 15 manches, arbitrage par IA
+# BacRush — Petit Bac multijoueur, 6 à 18 manches, arbitrage par IA
 
 BacRush est un jeu de Petit Bac en ligne : un salon, **jusqu'à 10 joueurs**,
 **6, 12 ou 18 manches** au choix. Le serveur est la seule source de vérité — il tire les lettres,
@@ -34,7 +34,7 @@ indique la même chose aux joueurs.
 **Ce que ça coûte** : une manche = un appel (plus un second si des réponses
 restent douteuses). Avec un salon plein et `claude-opus-5`, compter quelques
 dizaines de centimes par manche, soit l'ordre de quelques euros pour une
-partie de 15 manches ; nettement moins à 2 ou 3 joueurs. Pour diviser la note,
+partie complète ; nettement moins à 2 ou 3 joueurs. Pour diviser la note,
 basculer sur un modèle moins cher :
 
 ```bash

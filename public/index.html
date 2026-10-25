@@ -167,6 +167,7 @@
       <div class="results-footer">
         <button class="btn btn-primary" id="btn-next">MANCHE SUIVANTE</button>
         <p class="muted small" id="next-hint"></p>
+        <button class="btn btn-ghost btn-quit" id="btn-quit-results">Quitter la partie</button>
       </div>
     </section>
 
@@ -174,13 +175,17 @@
     <section class="screen" id="screen-final">
       <canvas id="confetti"></canvas>
       <div class="final-card">
-        <p class="eyebrow">Partie terminée — 15 manches</p>
+        <p class="eyebrow" id="final-eyebrow">Partie terminée</p>
         <h2 class="winner" id="final-winner"></h2>
         <ol class="podium" id="podium"></ol>
         <div class="table-scroll">
           <table class="final-table" id="final-table"></table>
         </div>
-        <button class="btn btn-primary" id="btn-newgame">NOUVELLE PARTIE</button>
+        <div class="final-actions">
+          <button class="btn btn-primary" id="btn-newgame">NOUVELLE PARTIE</button>
+          <p class="muted small" id="final-hint"></p>
+          <button class="btn btn-ghost btn-quit" id="btn-quit-final">Quitter la partie</button>
+        </div>
       </div>
     </section>
 

@@ -247,6 +247,8 @@ input[type="text"]:focus {
 }
 .btn-quit:hover { color: var(--bad); }
 .btn-quit.is-armed { color: var(--bad); border-color: var(--bad); }
+.final-actions { display: grid; justify-items: center; gap: 6px; }
+.final-actions .btn-quit { margin-top: 4px; }
 .topbar-right { display: flex; gap: 6px; }
 #btn-close-corrections {
   border-color: rgba(52, 211, 153, 0.5);
