@@ -167,3 +167,45 @@ test('les notes repartent de zéro à la manche suivante', () => {
   assert.equal(entry(room, 'ville', alice.id).points, 2, 'plus aucune note de la manche d\'avant');
   assert.equal(room.players.get(alice.id).score, 2);
 });
+
+test('chacun voit les points que les autres se sont attribués', () => {
+  const { room, players } = setup(['Alice', 'Bob']);
+  const [alice, bob] = players;
+  // Même ville pour les deux : le calcul propose 1 à chacun.
+  closeWith(room, {
+    [alice.id]: { ville: 'Marseille', animal: 'Mouton' },
+    [bob.id]: { ville: 'Marseille' },
+  });
+  room.selfScore(alice.id, { categoryKey: 'ville', points: 2 }); // Alice se sur-note
+
+  // Vue de Bob : il voit le 2 d'Alice, sans pouvoir y toucher.
+  const vueBob = room.publicState(bob.id).vote;
+  const ligneAlice = vueBob.categories
+    .find((c) => c.key === 'ville')
+    .entries.find((e) => e.playerId === alice.id);
+  assert.equal(ligneAlice.canSelfScore, false, 'Bob ne note pas pour Alice');
+  assert.equal(ligneAlice.shownPoints, 2, 'les points d\'Alice sont visibles');
+  assert.equal(ligneAlice.selfPoints, 2);
+  assert.equal(ligneAlice.divergesFromProposal, true, 'l\'écart avec le calcul est signalé');
+  assert.equal(ligneAlice.proposedPoints, 1, 'le calcul proposait 1');
+
+  // Une réponse non encore notée affiche la proposition, sans signalement.
+  const ligneAnimal = vueBob.categories
+    .find((c) => c.key === 'animal')
+    .entries.find((e) => e.playerId === alice.id);
+  assert.equal(ligneAnimal.selfPoints, null);
+  assert.equal(ligneAnimal.shownPoints, ligneAnimal.proposedPoints);
+  assert.equal(ligneAnimal.divergesFromProposal, false);
+});
+
+test('une note conforme au calcul n\'est pas signalée comme un écart', () => {
+  const { room, players } = setup(['Alice', 'Bob']);
+  const [alice, bob] = players;
+  closeWith(room, { [alice.id]: { ville: 'Marseille' }, [bob.id]: { ville: 'Metz' } });
+  room.selfScore(alice.id, { categoryKey: 'ville', points: 2 }); // = la proposition
+  const ligne = room.publicState(bob.id).vote.categories
+    .find((c) => c.key === 'ville')
+    .entries.find((e) => e.playerId === alice.id);
+  assert.equal(ligne.shownPoints, 2);
+  assert.equal(ligne.divergesFromProposal, false);
+});

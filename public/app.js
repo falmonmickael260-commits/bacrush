@@ -65,18 +65,68 @@ async function api(path, body) {
   return data;
 }
 
-// sessionStorage : propre à l'onglet (deux joueurs peuvent jouer depuis la même
-// machine) et conservé lors d'un rechargement de page.
+/**
+ * Deux niveaux de mémoire :
+ *  - sessionStorage : propre à l'onglet, pour que deux joueurs puissent jouer
+ *    depuis la même machine sans se marcher dessus ;
+ *  - localStorage : propre à l'appareil, pour reprendre sa place après une
+ *    fermeture d'onglet, un plantage du navigateur ou un départ volontaire.
+ */
+const DEVICE_KEY = (code) => `bacrush.device.${code}`;
+
 function saveSession(s) {
   session = s;
-  try { sessionStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch { /* stockage indisponible */ }
+  try { sessionStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch { /* indisponible */ }
+  try {
+    localStorage.setItem(DEVICE_KEY(s.code), JSON.stringify({ ...s, at: Date.now() }));
+    localStorage.setItem('bacrush.lastRoom', s.code);
+  } catch { /* indisponible */ }
 }
-function clearSession() {
+
+function clearSession({ forgetDevice = false } = {}) {
+  const code = session?.code;
   session = null;
   try { sessionStorage.removeItem(STORE_KEY); } catch { /* ignoré */ }
+  if (forgetDevice && code) {
+    try {
+      localStorage.removeItem(DEVICE_KEY(code));
+      if (localStorage.getItem('bacrush.lastRoom') === code) {
+        localStorage.removeItem('bacrush.lastRoom');
+      }
+    } catch { /* ignoré */ }
+  }
 }
+
 function loadSession() {
-  try { return sessionStorage.getItem(STORE_KEY); } catch { return null; }
+  try {
+    const own = sessionStorage.getItem(STORE_KEY);
+    if (own) return JSON.parse(own);
+  } catch { /* ignoré */ }
+  // Cet onglet ne sait rien : on regarde si l'appareil a une place en réserve.
+  try {
+    const code = localStorage.getItem('bacrush.lastRoom');
+    if (!code) return null;
+    const saved = localStorage.getItem(DEVICE_KEY(code));
+    return saved ? JSON.parse(saved) : null;
+  } catch { return null; }
+}
+
+/** Demande au serveur de rendre sa place au porteur du jeton. */
+async function reclaimSeat(code, token) {
+  try {
+    const data = await api(`/api/rooms/${code}/rejoin`, { token });
+    saveSession({ code: data.code, token: data.token, playerId: data.playerId, name: data.name });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function deviceSeat(code) {
+  try {
+    const saved = localStorage.getItem(DEVICE_KEY(code));
+    return saved ? JSON.parse(saved) : null;
+  } catch { return null; }
 }
 
 // --------------------------------------------------------------- connexion
@@ -98,9 +148,12 @@ function connect() {
     clockOffset = data.serverNow - Date.now(); // resynchronisation périodique
   });
 
-  stream.addEventListener('error', () => {
-    // EventSource se reconnecte seul ; on vérifie que la session est encore valable.
-    fetch(`/api/health`).then(() => {}).catch(() => {});
+  stream.addEventListener('error', async () => {
+    // EventSource se reconnecte seul. Si le jeton n'est plus reconnu, on tente
+    // de reprendre la place avant d'abandonner.
+    if (!session) return;
+    const restored = await reclaimSeat(session.code, session.token);
+    if (!restored) return;
   });
 }
 
@@ -119,13 +172,18 @@ async function init() {
   }
 
   const saved = loadSession();
-  if (saved) {
-    try {
-      session = JSON.parse(saved);
-      $('input-name').value = session.name ?? '';
+  if (saved?.code && saved?.token) {
+    $('input-name').value = saved.name ?? '';
+    // Le serveur confirme que la place existe encore avant d'ouvrir le flux.
+    const restored = await reclaimSeat(saved.code, saved.token);
+    if (restored) {
       connect();
       return;
-    } catch { clearSession(); }
+    }
+    session = null;
+    try { localStorage.removeItem(DEVICE_KEY(saved.code)); } catch { /* ignoré */ }
+    $('input-code').value = saved.code;
+    homeError('Ta place dans ce salon a expiré. Rejoins-le de nouveau avec le code.');
   }
   showScreen('home');
 }
@@ -149,6 +207,16 @@ $('btn-join').addEventListener('click', async () => {
   homeError('');
   const code = $('input-code').value.trim().toUpperCase();
   if (code.length !== 4) return homeError('Le code comporte 4 caractères.');
+  // Même appareil, même salon : on reprend sa place plutôt que d'en créer une.
+  const seat = deviceSeat(code);
+  if (seat?.token) {
+    const restored = await reclaimSeat(code, seat.token);
+    if (restored) {
+      connect();
+      toast(`Tu reprends ta place : ${restored.name}`);
+      return;
+    }
+  }
   try {
     const data = await api(`/api/rooms/${code}/join`, { name: $('input-name').value });
     saveSession({ code: data.code, token: data.token, playerId: data.playerId, name: data.name });
@@ -191,6 +259,7 @@ async function quitGame(event) {
   }
   quitArmed = null;
   clearTimeout(quitGame._t);
+  const code = session?.code;
   try {
     await api(`/api/rooms/${session.code}/leave`, { token: session.token });
   } catch { /* le salon a peut-être déjà disparu */ }
@@ -198,8 +267,12 @@ async function quitGame(event) {
   stream = null;
   state = null;
   renderedRoundKey = null;
+  // La place reste récupérable un quart d'heure : on garde le jeton sur
+  // l'appareil et on pré-remplit le code pour revenir d'un geste.
   clearSession();
+  if (code) $('input-code').value = code;
   showScreen('home');
+  toast('Tu peux revenir avec le code depuis cet appareil.', 5000);
 }
 
 $('btn-quit-lobby').addEventListener('click', quitGame);
@@ -666,6 +739,27 @@ function renderVoting() {
         action.textContent = entry.challengedByMe ? 'Contestée' : 'Contester';
         action.addEventListener('click', () => toggleChallenge(entry.playerId, category.key));
         actions.appendChild(action);
+      }
+
+      // Notation libre : tout le monde voit les points que les autres se sont
+      // donnés, en gris et non cliquables, pour pouvoir vérifier.
+      if (selfMode && !entry.canSelfScore && entry.raw) {
+        const shown = document.createElement('span');
+        const chosen = entry.selfPoints !== null;
+        shown.className = `self-shown p${entry.shownPoints}${chosen ? ' is-chosen' : ''}`;
+        shown.textContent = String(entry.shownPoints);
+        shown.title = chosen
+          ? `${nameOf(entry.playerId)} s'est attribué ${entry.shownPoints} point(s)`
+          : 'Points calculés automatiquement, pas encore confirmés';
+        actions.appendChild(shown);
+
+        if (entry.divergesFromProposal) {
+          const flag = document.createElement('span');
+          flag.className = 'self-diverge';
+          flag.textContent = `≠ ${entry.proposedPoints}`;
+          flag.title = `Le calcul proposait ${entry.proposedPoints}`;
+          actions.appendChild(flag);
+        }
       }
 
       if (entry.canSelfScore) {

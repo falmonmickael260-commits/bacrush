@@ -313,6 +313,29 @@ select {
 .btn-point[data-points="2"].is-on { background: var(--ok); }
 .btn-point.is-suggested { border-color: var(--accent); color: var(--text); }
 .self-hint { font-size: 0.72rem; color: var(--muted); }
+
+/* Points que les autres se sont attribués : lisibles, mais sans action. */
+.self-shown {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+.self-shown.is-chosen { color: var(--text); border-color: rgba(255, 255, 255, 0.28); }
+.self-diverge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--warn);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 99px;
+  padding: 2px 7px;
+}
 .decision-note { font-size: 0.74rem; color: var(--muted); }
 
 /* ---------------------------------------------------------------- manche */

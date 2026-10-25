@@ -11,6 +11,10 @@ export const MAX_PLAYERS = 10; // capacité d'un salon
 // Temps de correction après chaque manche : au moins deux minutes dans tous
 // les cas. L'hôte peut toujours enchaîner avant la fin s'il juge que tout est
 // réglé ; le compte à rebours n'est qu'un garde-fou.
+// Un joueur qui ferme son onglet ou quitte peut récupérer sa place avec le
+// code, depuis le même appareil, pendant ce délai.
+export const RECLAIM_WINDOW_MS = 15 * 60_000;
+
 export const VOTE_DURATION_MS = 120_000; // contestation par le salon
 export const REFEREE_DURATION_MS = 180_000; // un seul joueur relit tout le monde
 export const SELF_DURATION_MS = 150_000; // chacun relit ses 8 rubriques
@@ -65,6 +69,7 @@ export class Room {
     this.createdAt = this.now();
     this.players = new Map(); // playerId -> player
     this.tokens = new Map(); // token -> playerId
+    this.departed = new Map(); // token -> { player, at } : places récupérables
     this.hostId = null;
     this.arbitrationMode = ARBITRATION.VOTE;
     this.refereeId = null;
@@ -114,11 +119,38 @@ export class Room {
     if (!player) return;
     this.players.delete(playerId);
     this.tokens.delete(player.token);
+    // La place est gardée au chaud : même appareil + même code = on la reprend.
+    this.departed.set(player.token, { player, at: this.now() });
     if (this.hostId === playerId) {
       this.hostId = this.players.keys().next().value ?? null;
     }
     this.ensureRefereeStillHere();
     this.touch();
+  }
+
+  /**
+   * Reprise de place après une fermeture d'onglet, un plantage ou un départ.
+   * Le jeton fait foi : il vit dans le navigateur de l'appareil d'origine.
+   */
+  reclaim(token) {
+    const existing = this.playerByToken(token);
+    if (existing) return { ok: true, player: existing, already: true };
+
+    const record = this.departed.get(String(token ?? ''));
+    if (!record) return { ok: false, error: 'Place introuvable' };
+    if (this.now() - record.at > RECLAIM_WINDOW_MS) {
+      this.departed.delete(token);
+      return { ok: false, error: 'Place expirée' };
+    }
+    if (this.isFull) return { ok: false, error: `Salon complet (${MAX_PLAYERS} joueurs maximum)` };
+
+    const { player } = record;
+    this.departed.delete(token);
+    this.players.set(player.id, player);
+    this.tokens.set(player.token, player.id);
+    if (!this.hostId) this.hostId = player.id;
+    this.touch();
+    return { ok: true, player, restored: true };
   }
 
   setConnected(playerId, connected) {
@@ -841,6 +873,12 @@ export class Room {
                 canAccept: refereeMode ? this.canRefereeAccept(entry) : false,
                 selfPoints: this.round.selfScores.get(key) ?? null,
                 proposedPoints: entry.points,
+                // Visible par tout le salon : chacun voit ce que les autres
+                // se sont attribués, et si cela s'écarte du calcul.
+                shownPoints: this.round.selfScores.get(key) ?? entry.points,
+                divergesFromProposal:
+                  this.round.selfScores.has(key) &&
+                  this.round.selfScores.get(key) !== entry.points,
                 canSelfScore: Boolean(
                   this.arbitrationMode === ARBITRATION.SELF && mine === entry.playerId && entry.raw,
                 ),

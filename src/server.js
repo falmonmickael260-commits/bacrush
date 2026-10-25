@@ -217,6 +217,20 @@ async function handleApi(req, res, url, hub) {
     const action = segments[3];
     const body = req.method === 'POST' ? await readBody(req) : {};
 
+    // Reprise de place : le navigateur présente le jeton qu'il a conservé.
+    if (action === 'rejoin' && req.method === 'POST') {
+      const result = room.reclaim(body.token);
+      if (!result.ok) return sendJSON(res, 404, result);
+      hub.broadcast(room);
+      return sendJSON(res, 200, {
+        code: room.code,
+        playerId: result.player.id,
+        token: result.player.token,
+        name: result.player.name,
+        restored: Boolean(result.restored),
+      });
+    }
+
     if (action === 'join' && req.method === 'POST') {
       if (room.isFull) {
         return sendJSON(res, 409, {
