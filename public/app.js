@@ -164,6 +164,55 @@ $('btn-start').addEventListener('click', async () => {
   catch (err) { toast(err.message); }
 });
 
+async function setRoundCount(totalRounds) {
+  try {
+    await api(`/api/rooms/${session.code}/rounds`, { token: session.token, totalRounds });
+  } catch (err) { toast(err.message); }
+}
+
+let quitArmed = null;
+
+/** Deux temps : un premier appui demande confirmation, le second quitte. */
+async function quitGame(event) {
+  const button = event?.currentTarget;
+  if (quitArmed !== button) {
+    quitArmed = button;
+    const label = button.textContent;
+    button.textContent = 'Confirmer ?';
+    button.classList.add('is-armed');
+    clearTimeout(quitGame._t);
+    quitGame._t = setTimeout(() => {
+      if (quitArmed !== button) return;
+      quitArmed = null;
+      button.textContent = label;
+      button.classList.remove('is-armed');
+    }, 4000);
+    return;
+  }
+  quitArmed = null;
+  clearTimeout(quitGame._t);
+  try {
+    await api(`/api/rooms/${session.code}/leave`, { token: session.token });
+  } catch { /* le salon a peut-être déjà disparu */ }
+  stream?.close();
+  stream = null;
+  state = null;
+  renderedRoundKey = null;
+  clearSession();
+  showScreen('home');
+}
+
+$('btn-quit-lobby').addEventListener('click', quitGame);
+$('btn-quit-round').addEventListener('click', quitGame);
+
+$('btn-close-corrections').addEventListener('click', async () => {
+  $('btn-close-corrections').disabled = true;
+  try {
+    await api(`/api/rooms/${session.code}/closecorrections`, { token: session.token });
+  } catch (err) { toast(err.message); }
+  setTimeout(() => { $('btn-close-corrections').disabled = false; }, 800);
+});
+
 async function setArbitration(mode) {
   const refereeId = mode === 'referee'
     ? ($('referee-select').value || state?.you?.id)
@@ -371,6 +420,7 @@ function renderLobby() {
       ${player.isHost ? '<span class="tag">hôte</span>' : ''}`;
     list.appendChild(li);
   }
+  renderLengthPicker();
   renderArbitrationPicker();
   const isHost = Boolean(state.you?.isHost);
   $('btn-start').hidden = !isHost;
@@ -378,8 +428,36 @@ function renderLobby() {
   const capacity = state.maxPlayers ?? config.maxPlayers ?? 10;
   $('lobby-count').textContent = `${state.players.length} / ${capacity} joueurs`;
   $('lobby-hint').textContent = isHost
-    ? `${config.totalRounds} manches de ${config.roundDurationMs / 1000} s · lance quand tout le monde est là`
+    ? `${state.totalRounds} manches de ${config.roundDurationMs / 1000} s · lance quand tout le monde est là`
     : "En attente du lancement par l'hôte…";
+}
+
+function renderLengthPicker() {
+  const isHost = Boolean(state.you?.isHost);
+  const options = state.roundOptions ?? config.roundOptions ?? [6, 12, 18];
+  $('length-picker').hidden = !isHost;
+  $('length-readonly').hidden = isHost;
+  if (!isHost) {
+    $('length-readonly').textContent = `Partie en ${state.totalRounds} manches`;
+    return;
+  }
+  const container = $('length-options');
+  if (container.dataset.options !== options.join(',')) {
+    container.dataset.options = options.join(',');
+    container.innerHTML = '';
+    for (const count of options) {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'length-option';
+      option.dataset.count = String(count);
+      option.innerHTML = `${count}<small>manches</small>`;
+      option.addEventListener('click', () => setRoundCount(count));
+      container.appendChild(option);
+    }
+  }
+  for (const option of container.children) {
+    option.classList.toggle('is-on', Number(option.dataset.count) === state.totalRounds);
+  }
 }
 
 function renderArbitrationPicker() {
@@ -537,6 +615,9 @@ function renderVoting() {
     button.classList.toggle('btn-primary', !amReady);
     $('vote-hint').textContent = 'Le vote se termine seul à la fin du compte à rebours.';
   }
+
+  // L'hôte peut enchaîner dès que les corrections sont réglées.
+  $('btn-close-corrections').hidden = !state.canAdvance;
 
   const nameOf = (id) => state.players.find((p) => p.id === id)?.name ?? '—';
   const list = $('vote-list');
@@ -737,9 +818,12 @@ function renderResults() {
     list.appendChild(block);
   });
 
-  $('next-hint').textContent = results.isFinalRound
-    ? 'Dernière manche — place au classement final'
-    : `Prochaine lettre inutilisée · ${state.totalRounds - state.roundNumber} manche(s) restante(s)`;
+  $('btn-next').hidden = !state.canAdvance;
+  $('next-hint').textContent = !state.canAdvance
+    ? "En attente de l'hôte pour la manche suivante…"
+    : results.isFinalRound
+      ? 'Dernière manche — place au classement final'
+      : `Prochaine lettre inutilisée · ${state.totalRounds - state.roundNumber} manche(s) restante(s)`;
   $('btn-next').textContent = results.isFinalRound ? 'VOIR LE CLASSEMENT' : 'MANCHE SUIVANTE';
 }
 

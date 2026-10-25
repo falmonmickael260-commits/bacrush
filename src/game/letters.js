@@ -7,7 +7,14 @@ export const ELIGIBLE_LETTERS = Object.freeze([
   'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V',
 ]);
 
-export const TOTAL_ROUNDS = 15;
+/** Longueurs de partie proposées à l'hôte. */
+export const ROUND_OPTIONS = Object.freeze([6, 12, 18]);
+export const DEFAULT_ROUNDS = 12;
+export const TOTAL_ROUNDS = DEFAULT_ROUNDS; // valeur par défaut d'une partie
+
+export function isValidRoundCount(count) {
+  return ROUND_OPTIONS.includes(count);
+}
 
 /**
  * Mélange de Fisher-Yates puis découpe : le tirage est fait UNE fois par partie.

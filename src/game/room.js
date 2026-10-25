@@ -1,16 +1,19 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { CATEGORY_KEYS } from '../shared/categories.js';
 import { firstLetterOf, isBlank } from '../shared/normalize.js';
-import { drawLetters, TOTAL_ROUNDS } from './letters.js';
+import { DEFAULT_ROUNDS, ROUND_OPTIONS, drawLetters, isValidRoundCount } from './letters.js';
 import { makeVerdictKey, scoreRound } from './scoring.js';
 
 export const ROUND_DURATION_MS = 240_000; // 4 minutes — durée officielle d'une manche
 export const REVEAL_DURATION_MS = 3_200; // animation de révélation de la lettre
 export const VALIDATION_TIMEOUT_MS = 90_000; // garde-fou si l'IA ne répond jamais
 export const MAX_PLAYERS = 10; // capacité d'un salon
-export const VOTE_DURATION_MS = 60_000; // temps de contestation après la validation
-export const REFEREE_DURATION_MS = 120_000; // l'arbitre relit toutes les réponses : plus de temps
-export const SELF_DURATION_MS = 90_000; // chacun se note : un seul joueur à relire, mais 8 rubriques
+// Temps de correction après chaque manche : au moins deux minutes dans tous
+// les cas. L'hôte peut toujours enchaîner avant la fin s'il juge que tout est
+// réglé ; le compte à rebours n'est qu'un garde-fou.
+export const VOTE_DURATION_MS = 120_000; // contestation par le salon
+export const REFEREE_DURATION_MS = 180_000; // un seul joueur relit tout le monde
+export const SELF_DURATION_MS = 150_000; // chacun relit ses 8 rubriques
 
 export const ARBITRATION = Object.freeze({
   VOTE: 'vote', // le salon conteste, la majorité tranche
@@ -65,6 +68,7 @@ export class Room {
     this.hostId = null;
     this.arbitrationMode = ARBITRATION.VOTE;
     this.refereeId = null;
+    this.totalRounds = DEFAULT_ROUNDS;
     this.phase = PHASE.LOBBY;
     this.letters = [];
     this.roundIndex = -1;
@@ -141,6 +145,20 @@ export class Room {
    * Choix du mode d'arbitrage, dans le salon uniquement : vote de tous, ou un
    * arbitre désigné qui accepte ou refuse les réponses.
    */
+  /** Longueur de la partie, choisie dans le salon avant le lancement. */
+  setRoundCount(count) {
+    if (this.phase !== PHASE.LOBBY) {
+      return { ok: false, error: 'La partie est déjà lancée' };
+    }
+    const value = Number(count);
+    if (!isValidRoundCount(value)) {
+      return { ok: false, error: `Longueurs possibles : ${ROUND_OPTIONS.join(', ')} manches` };
+    }
+    this.totalRounds = value;
+    this.touch();
+    return { ok: true, totalRounds: value };
+  }
+
   setArbitration({ mode, refereeId }) {
     if (this.phase !== PHASE.LOBBY) {
       return { ok: false, error: 'La partie est déjà lancée' };
@@ -177,7 +195,7 @@ export class Room {
     }
     if (this.players.size === 0) return { ok: false, error: 'Aucun joueur' };
     this.gameNumber++;
-    this.letters = drawLetters(TOTAL_ROUNDS, this.rng);
+    this.letters = drawLetters(this.totalRounds, this.rng);
     this.roundIndex = -1;
     this.history = [];
     for (const player of this.players.values()) {
@@ -511,6 +529,26 @@ export class Room {
     return { ok: true, waiting: true };
   }
 
+  /**
+   * L'hôte met fin aux corrections sans attendre le compte à rebours, quand
+   * tout le monde a dit que c'était bon.
+   */
+  closeArbitration(playerId) {
+    if (this.phase !== PHASE.VOTING || !this.round) {
+      return { ok: false, ignored: true, error: 'Aucune correction en cours' };
+    }
+    if (playerId !== this.hostId) {
+      return { ok: false, error: "Seul l'hôte peut clore les corrections" };
+    }
+    return this.finalizeRound();
+  }
+
+  /** L'hôte est-il absent ? Les autres peuvent alors enchaîner à sa place. */
+  hostUnavailable() {
+    const host = this.hostId ? this.players.get(this.hostId) : null;
+    return !host || !host.connected;
+  }
+
   everyoneReady() {
     const present = this.playerList.filter((p) => p.connected);
     const expected = present.length > 0 ? present : this.playerList;
@@ -609,18 +647,23 @@ export class Room {
       refused,
     };
 
-    this.phase = this.round.index >= TOTAL_ROUNDS - 1 ? PHASE.FINISHED : PHASE.RESULTS;
+    this.phase = this.round.index >= this.totalRounds - 1 ? PHASE.FINISHED : PHASE.RESULTS;
     this.touch();
     return { ok: true };
   }
 
   /** Passage à la manche suivante : initialisé une seule fois, lettre inutilisée. */
-  nextRound(fromIndex) {
+  nextRound(fromIndex, playerId = null) {
     if (this.phase !== PHASE.RESULTS) return { ok: false, ignored: true, error: 'Pas en résultats' };
+    // L'hôte lance la manche suivante. Si son onglet est fermé, n'importe qui
+    // peut prendre le relais plutôt que de laisser la partie en plan.
+    if (playerId && playerId !== this.hostId && !this.hostUnavailable()) {
+      return { ok: false, error: "L'hôte lance la manche suivante" };
+    }
     if (Number.isInteger(fromIndex) && fromIndex !== this.roundIndex) {
       return { ok: false, ignored: true, error: 'Manche déjà passée' };
     }
-    if (this.roundIndex >= TOTAL_ROUNDS - 1) {
+    if (this.roundIndex >= this.totalRounds - 1) {
       this.phase = PHASE.FINISHED;
       this.touch();
       return { ok: false, error: 'Partie terminée' };
@@ -702,7 +745,7 @@ export class Room {
       phase: this.phase,
       serverNow: t,
       version: this.version,
-      totalRounds: TOTAL_ROUNDS,
+      totalRounds: this.totalRounds,
       maxPlayers: MAX_PLAYERS,
       roundNumber: this.roundIndex + 1,
       gameNumber: this.gameNumber,
@@ -712,6 +755,10 @@ export class Room {
         refereeId: this.refereeId,
         refereeName: this.referee?.name ?? null,
       },
+      roundOptions: ROUND_OPTIONS,
+      canAdvance: Boolean(
+        forPlayerId && (forPlayerId === this.hostId || this.hostUnavailable()),
+      ),
       players: standings,
       you: null,
       round: null,
@@ -811,7 +858,7 @@ export class Room {
           flaggedCount: this.round.results.flaggedCount,
           refused: this.round.refused ?? [],
           roundIndex: this.round.index,
-          isFinalRound: this.round.index >= TOTAL_ROUNDS - 1,
+          isFinalRound: this.round.index >= this.totalRounds - 1,
         };
       }
     }

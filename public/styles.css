@@ -220,6 +220,40 @@ input[type="text"]:focus {
   border-color: var(--accent);
   background: linear-gradient(135deg, rgba(124, 92, 255, 0.25), var(--surface-2));
 }
+.length-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.length-option {
+  appearance: none;
+  font: inherit;
+  font-weight: 700;
+  padding: 12px 8px;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 1px;
+}
+.length-option small { font-size: 0.66rem; font-weight: 500; color: var(--muted); }
+.length-option.is-on {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.3), var(--surface-2));
+}
+.btn-quit {
+  margin-top: 14px;
+  color: var(--muted);
+  border-color: transparent;
+  font-size: 0.85rem;
+}
+.btn-quit:hover { color: var(--bad); }
+.btn-quit.is-armed { color: var(--bad); border-color: var(--bad); }
+.topbar-right { display: flex; gap: 6px; }
+#btn-close-corrections {
+  border-color: rgba(52, 211, 153, 0.5);
+  color: var(--ok);
+  background: transparent;
+}
+
 .referee-field { margin: 12px 0 0; }
 select {
   width: 100%;

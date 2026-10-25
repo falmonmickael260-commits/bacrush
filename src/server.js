@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GameHub } from './game/hub.js';
 import { CATEGORIES } from './shared/categories.js';
-import { TOTAL_ROUNDS } from './game/letters.js';
+import { TOTAL_ROUNDS, ROUND_OPTIONS } from './game/letters.js';
 import { ROUND_DURATION_MS, MAX_PLAYERS } from './game/room.js';
 import { AI_MODE, UNCERTAIN_POLICY } from './ai/validator.js';
 import { hasCredentials, DEFAULT_MODEL } from './ai/anthropic-validator.js';
@@ -187,6 +187,7 @@ async function handleApi(req, res, url, hub) {
         placeholder,
       })),
       totalRounds: TOTAL_ROUNDS,
+      roundOptions: ROUND_OPTIONS,
       roundDurationMs: ROUND_DURATION_MS,
       maxPlayers: MAX_PLAYERS,
       ai: {
@@ -258,6 +259,19 @@ async function handleApi(req, res, url, hub) {
         hub.pump(room); // lance la validation immédiatement
         return sendJSON(res, result.ok || result.ignored ? 200 : 409, result);
       }
+      case 'rounds': {
+        if (player.id !== room.hostId) {
+          return sendJSON(res, 403, { error: "Seul l'hôte choisit la longueur de la partie" });
+        }
+        const result = room.setRoundCount(body.totalRounds);
+        hub.broadcast(room);
+        return sendJSON(res, result.ok ? 200 : 409, result);
+      }
+      case 'closecorrections': {
+        const result = room.closeArbitration(player.id);
+        hub.pump(room);
+        return sendJSON(res, result.ok || result.ignored ? 200 : 403, result);
+      }
       case 'arbitration': {
         if (player.id !== room.hostId) {
           return sendJSON(res, 403, { error: "Seul l'hôte choisit le mode d'arbitrage" });
@@ -302,6 +316,7 @@ async function handleApi(req, res, url, hub) {
       case 'next': {
         const result = room.nextRound(
           Number.isInteger(body.fromRound) ? body.fromRound : undefined,
+          player.id,
         );
         hub.pump(room);
         return sendJSON(res, 200, result);

@@ -4,7 +4,7 @@ import { createServer } from '../src/server.js';
 import { GameHub } from '../src/game/hub.js';
 import { createValidator } from '../src/ai/validator.js';
 import { TestClient, validAnswersFor, passVote } from './helpers/client.js';
-import { TOTAL_ROUNDS } from '../src/game/letters.js';
+import { ROUND_OPTIONS } from '../src/game/letters.js';
 
 /** Serveur réel + validation déterministe (mode secours, aucun appel réseau). */
 async function startServer({ roundDurationMs = 2_000, revealDurationMs = 30 } = {}) {
@@ -196,15 +196,24 @@ test('aucune clé d\'API n\'est exposée au navigateur', async (t) => {
   assert.ok(!/sk-ant|ANTHROPIC_API_KEY/i.test(serialized));
   assert.equal(typeof config.ai.configured, 'boolean');
   assert.equal(config.categories.length, 8);
-  assert.equal(config.totalRounds, 15);
+  assert.equal(config.totalRounds, 12, 'longueur par défaut');
+  assert.deepEqual(config.roundOptions, [6, 12, 18]);
   assert.equal(config.roundDurationMs, 240_000, 'la durée officielle reste 240 s');
 });
 
 // §15.20 — partie complète
-test('une partie complète enchaîne 15 manches avec 15 lettres distinctes puis le classement', async (t) => {
+test('une partie complète enchaîne toutes ses manches puis le classement', async (t) => {
   const ctx = await startServer({ roundDurationMs: 60_000, revealDurationMs: 10 });
   t.after(() => ctx.close());
   const { alice, bob } = await twoPlayers(ctx);
+
+  // Partie courte : la longueur est choisie par l'hôte dans le salon.
+  const TOTAL_ROUNDS = ROUND_OPTIONS[0];
+  const chosen = await alice.post(`/api/rooms/${alice.code}/rounds`, {
+    token: alice.token,
+    totalRounds: TOTAL_ROUNDS,
+  });
+  assert.equal(chosen.data.ok, true);
   await alice.start();
 
   const lettersSeen = [];
@@ -232,7 +241,7 @@ test('une partie complète enchaîne 15 manches avec 15 lettres distinctes puis 
     }
   }
 
-  assert.equal(new Set(lettersSeen).size, TOTAL_ROUNDS, 'aucune lettre répétée sur 15 manches');
+  assert.equal(new Set(lettersSeen).size, TOTAL_ROUNDS, 'aucune lettre répétée');
   await alice.waitFor((s) => s.phase === 'finished', { label: 'classement final' });
 
   const final = alice.last;

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0d1a" />
-  <title>BacRush — 15 manches, arbitrage IA</title>
+  <title>BacRush — Petit Bac en ligne</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -14,7 +14,7 @@
     <section class="screen is-active" id="screen-home">
       <div class="home-card">
         <h1 class="logo">Bac<span>Rush</span></h1>
-        <p class="tagline">15 manches · 8 rubriques · 4 minutes · arbitrage par IA</p>
+        <p class="tagline">8 rubriques · 4 minutes par manche · jusqu'à 10 joueurs</p>
 
         <label class="field">
           <span>Ton pseudo</span>
@@ -45,6 +45,12 @@
         <p class="lobby-count" id="lobby-count">1 / 10 joueurs</p>
         <ul class="player-grid" id="lobby-players"></ul>
 
+        <div class="mode-picker" id="length-picker">
+          <p class="eyebrow">Longueur de la partie</p>
+          <div class="length-options" id="length-options"></div>
+        </div>
+        <p class="mode-readonly muted small" id="length-readonly" hidden></p>
+
         <div class="mode-picker" id="mode-picker">
           <p class="eyebrow">Qui tranche les réponses douteuses ?</p>
           <div class="mode-options">
@@ -70,6 +76,7 @@
 
         <button class="btn btn-primary btn-block" id="btn-start">Lancer la partie</button>
         <p class="muted small" id="lobby-hint">En attente de l'hôte…</p>
+        <button class="btn btn-ghost btn-quit" id="btn-quit-lobby">Quitter le salon</button>
       </div>
     </section>
 
@@ -84,6 +91,7 @@
         <div class="timer" id="timer"><span id="timer-text">4:00</span></div>
         <div class="topbar-right">
           <button class="btn btn-mini" id="btn-scores">Scores</button>
+          <button class="btn btn-mini btn-quit" id="btn-quit-round" title="Quitter la partie">Quitter</button>
         </div>
       </header>
 
@@ -137,6 +145,7 @@
 
       <div class="results-footer">
         <button class="btn btn-primary" id="btn-ready">PRÊT</button>
+        <button class="btn" id="btn-close-corrections" hidden>TOUT EST CORRIGÉ — MANCHE SUIVANTE</button>
         <p class="muted small" id="vote-hint">Le vote se termine seul à la fin du compte à rebours.</p>
       </div>
     </section>
