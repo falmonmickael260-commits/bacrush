@@ -273,6 +273,11 @@ async function handleApi(req, res, url, hub) {
         hub.pump(room); // lance la validation immédiatement
         return sendJSON(res, result.ok || result.ignored ? 200 : 409, result);
       }
+      case 'spin': {
+        const result = room.stopRoulette(player.id);
+        hub.pump(room);
+        return sendJSON(res, result.ok || result.ignored ? 200 : 403, result);
+      }
       case 'rounds': {
         if (player.id !== room.hostId) {
           return sendJSON(res, 403, { error: "Seul l'hôte choisit la longueur de la partie" });

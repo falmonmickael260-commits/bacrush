@@ -106,13 +106,30 @@ différents, avec des lettres et des scores distincts.
 | Longueur de partie | 6, 12 ou 18 manches, choisie par l'hôte dans le salon |
 | Quitter en cours de route | le joueur disparaît du salon et du barème ; si l'hôte part, un autre prend sa place |
 | 8 rubriques fixes | `src/shared/categories.js` |
-| 15 manches, 15 lettres distinctes | tirage unique par partie (`src/game/letters.js`), 20 lettres éligibles (K, Q, W, X, Y, Z écartées) |
+| Lettres toutes distinctes | roulette alimentée par les lettres encore disponibles (`src/game/letters.js`), 20 éligibles (K, Q, W, X, Y, Z écartées) |
 | 240 s par manche | horloge serveur (`src/game/room.js`), le navigateur n'affiche qu'un décompte dérivé |
 | Bouton FIN | invisible tant que les 8 rubriques ne sont pas remplies, revérifié côté serveur |
 | Clôture globale | un seul clic accepté, la manche se termine pour tout le monde |
 | Fin automatique à 00:00 | balayage serveur toutes les 250 ms, sans dépendre d'un navigateur ouvert |
 | Arbitrage humain | vote du salon (60 s), notation libre (90 s) ou arbitre désigné (2 min), au choix de l'hôte |
 | Barème 2 / 1 / 0 | `src/game/scoring.js`, appliqué après le vote, jamais par l'IA |
+
+## La roulette des lettres
+
+La lettre n'est plus tirée en silence : au début de chaque manche, une roulette
+fait défiler les lettres encore disponibles et **l'hôte appuie sur STOP**. La
+lettre retenue est celle qui passait à cet instant précis.
+
+Le défilement se calcule à partir de l'horloge du serveur, avec la même formule
+des deux côtés : tous les écrans affichent la même lettre au même instant, et
+le serveur recalcule l'arrêt lui-même. Personne ne peut contester ce qu'il a
+vu, personne ne peut forcer une lettre.
+
+La roue ne contient que les lettres non encore sorties : deux manches ne
+peuvent pas tomber sur la même, par construction. Sans appui, la roulette
+s'arrête seule au bout de 15 secondes ; si l'hôte a fermé son onglet, un autre
+joueur peut appuyer. Le chronomètre de la manche ne démarre qu'une fois la
+lettre fixée.
 
 ## L'arbitrage humain
 
@@ -236,7 +253,7 @@ L'interface est pensée pour être jouée au pouce :
 ## Tests
 
 ```bash
-npm test          # 117 tests, sans réseau ni clé d'API
+npm test          # 136 tests, sans réseau ni clé d'API
 npm run test:ai   # ajoute les tests de l'IA réelle (nécessite ANTHROPIC_API_KEY)
 ```
 

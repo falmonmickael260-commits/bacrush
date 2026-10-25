@@ -1,11 +1,16 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { CATEGORY_KEYS } from '../shared/categories.js';
 import { firstLetterOf, isBlank } from '../shared/normalize.js';
-import { DEFAULT_ROUNDS, ROUND_OPTIONS, drawLetters, isValidRoundCount } from './letters.js';
+import {
+  DEFAULT_ROUNDS, ROUND_OPTIONS, SPIN_MS, isValidRoundCount, letterAtSpin, makeWheel,
+} from './letters.js';
 import { makeVerdictKey, scoreRound } from './scoring.js';
 
 export const ROUND_DURATION_MS = 240_000; // 4 minutes — durée officielle d'une manche
-export const REVEAL_DURATION_MS = 3_200; // animation de révélation de la lettre
+export const REVEAL_DURATION_MS = 3_200; // temps d'arrêt sur l'image une fois la lettre sortie
+// Temps laissé à l'hôte pour appuyer sur STOP. Passé ce délai, la roulette
+// s'arrête seule : une partie ne doit jamais attendre un geste qui ne vient pas.
+export const ROULETTE_MAX_MS = 15_000;
 export const VALIDATION_TIMEOUT_MS = 90_000; // garde-fou si l'IA ne répond jamais
 export const MAX_PLAYERS = 10; // capacité d'un salon
 // Temps de correction après chaque manche : au moins deux minutes dans tous
@@ -60,12 +65,17 @@ export class Room {
     // Durées injectables : seuls les tests s'en écartent, le jeu utilise 240 s.
     roundDurationMs = ROUND_DURATION_MS,
     revealDurationMs = REVEAL_DURATION_MS,
+    rouletteMaxMs = null,
   } = {}) {
     this.code = code ?? makeRoomCode(rng);
     this.now = now;
     this.rng = rng;
     this.roundDurationMs = roundDurationMs;
     this.revealDurationMs = revealDurationMs;
+    // Les tests qui raccourcissent la révélation raccourcissent aussi la roulette.
+    this.rouletteMaxMs =
+      rouletteMaxMs ??
+      (revealDurationMs === REVEAL_DURATION_MS ? ROULETTE_MAX_MS : revealDurationMs);
     this.createdAt = this.now();
     this.players = new Map(); // playerId -> player
     this.tokens = new Map(); // token -> playerId
@@ -227,7 +237,9 @@ export class Room {
     }
     if (this.players.size === 0) return { ok: false, error: 'Aucun joueur' };
     this.gameNumber++;
-    this.letters = drawLetters(this.totalRounds, this.rng);
+    // Les lettres ne sont plus tirées d'avance : chacune sort de la roulette,
+    // manche après manche. this.letters garde celles déjà sorties.
+    this.letters = [];
     this.roundIndex = -1;
     this.history = [];
     for (const player of this.players.values()) {
@@ -243,7 +255,13 @@ export class Room {
     const startedAt = this.now();
     this.round = {
       index,
-      letter: this.letters[index],
+      letter: this.letters[index] ?? null, // décidée par la roulette
+      wheel: makeWheel(this.letters, this.rng),
+      spinMs: SPIN_MS,
+      rouletteStartedAt: startedAt,
+      // Si l'hôte n'appuie pas, la roulette s'arrête d'elle-même.
+      autoStopAt: startedAt + this.rouletteMaxMs,
+      stoppedBy: null,
       phaseStartedAt: startedAt,
       revealEndsAt: startedAt + this.revealDurationMs,
       startedAt: null,
@@ -272,6 +290,37 @@ export class Room {
     };
     this.phase = PHASE.REVEAL;
     this.touch();
+  }
+
+  /**
+   * Arrêt de la roulette. La lettre retenue est celle qui défilait à cet
+   * instant précis : le serveur la recalcule avec la même formule que les
+   * navigateurs, personne ne peut donc contester l'affichage.
+   */
+  stopRoulette(playerId = null) {
+    if (this.phase !== PHASE.REVEAL || !this.round) {
+      return { ok: false, ignored: true, error: 'Aucune roulette en cours' };
+    }
+    if (this.round.letter) return { ok: false, ignored: true, error: 'Lettre déjà sortie' };
+    if (playerId && playerId !== this.hostId && !this.hostUnavailable()) {
+      return { ok: false, error: "C'est à l'hôte d'arrêter la roulette" };
+    }
+
+    const t = this.now();
+    const letter = letterAtSpin(this.round.wheel, t - this.round.rouletteStartedAt, this.round.spinMs);
+    if (!letter) return { ok: false, error: 'Plus aucune lettre disponible' };
+
+    this.round.letter = letter;
+    this.round.stoppedBy = playerId;
+    this.letters[this.round.index] = letter;
+    // Court temps d'arrêt sur l'image avant d'ouvrir les rubriques.
+    // Arrêt par l'hôte : court temps d'arrêt sur l'image. Arrêt automatique :
+    // on garde l'échéance d'origine, sinon un balayage tardif la repousserait.
+    this.round.revealEndsAt = playerId
+      ? t + Math.min(1_500, this.revealDurationMs)
+      : Math.max(t, this.round.rouletteStartedAt + this.revealDurationMs);
+    this.touch();
+    return { ok: true, letter };
   }
 
   /** Fin de l'animation de révélation : le chronomètre de 240 s démarre. */
@@ -729,7 +778,12 @@ export class Room {
   tick() {
     const effects = [];
     const t = this.now();
-    if (this.phase === PHASE.REVEAL && this.round && t >= this.round.revealEndsAt) {
+    // Roulette laissée tourner : elle s'arrête seule pour ne pas bloquer.
+    if (this.phase === PHASE.REVEAL && this.round && !this.round.letter && t >= this.round.autoStopAt) {
+      this.stopRoulette(null);
+      effects.push({ type: 'roulette-stopped', reason: 'timeout' });
+    }
+    if (this.phase === PHASE.REVEAL && this.round?.letter && t >= this.round.revealEndsAt) {
       this.openRound();
       effects.push({ type: 'round-open' });
     }
@@ -816,6 +870,21 @@ export class Room {
       state.round = {
         index: this.round.index,
         letter: this.round.letter,
+        roulette: this.phase === PHASE.REVEAL ? {
+          spinning: !this.round.letter,
+          wheel: this.round.wheel,
+          spinMs: this.round.spinMs,
+          startedAt: this.round.rouletteStartedAt,
+          autoStopAt: this.round.autoStopAt,
+          canStop: Boolean(
+            !this.round.letter &&
+              forPlayerId &&
+              (forPlayerId === this.hostId || this.hostUnavailable()),
+          ),
+          stoppedByName: this.round.stoppedBy
+            ? this.players.get(this.round.stoppedBy)?.name ?? null
+            : null,
+        } : null,
         revealEndsAt: this.round.revealEndsAt,
         startedAt: this.round.startedAt,
         endsAt: this.round.endsAt,

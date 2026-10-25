@@ -22,6 +22,7 @@ let state = null;
 let stream = null;
 let clockOffset = 0;
 let renderedRoundKey = null;
+let lastRevealedLetter = null;
 let finishPending = false;
 let saveTimer = null;
 let lastSentSnapshot = '';
@@ -307,6 +308,14 @@ $('lobby-code').addEventListener('click', () => {
   );
 });
 
+$('btn-spin').addEventListener('click', async () => {
+  $('btn-spin').disabled = true;
+  try {
+    await api(`/api/rooms/${session.code}/spin`, { token: session.token });
+  } catch (err) { toast(err.message); }
+  setTimeout(() => { $('btn-spin').disabled = false; }, 600);
+});
+
 $('btn-scores').addEventListener('click', () => { $('scores-panel').hidden = false; });
 $('btn-close-scores').addEventListener('click', () => { $('scores-panel').hidden = true; });
 
@@ -574,14 +583,17 @@ function renderRound() {
     renderedRoundKey = roundKey;
     buildForm();
     lastSentSnapshot = '';
+  }
+  // L'animation de révélation attend que la roulette se soit arrêtée.
+  if (round.letter && lastRevealedLetter !== `${roundKey}:${round.letter}`) {
+    lastRevealedLetter = `${roundKey}:${round.letter}`;
     $('letter').classList.remove('is-revealing');
     void $('letter').offsetWidth; // relance l'animation
     $('letter').classList.add('is-revealing');
   }
 
   $('round-pill').textContent = `Manche ${state.roundNumber}/${state.totalRounds}`;
-  $('letter').textContent = round.letter;
-  $('letter-pill').textContent = round.letter; // rappel de la lettre sur mobile
+  renderRoulette();
 
   // Les réponses enregistrées ne sont réinjectées qu'au premier affichage de la
   // manche (ouverture, rechargement de page, reconnexion). Ensuite, le champ
@@ -601,11 +613,45 @@ function renderRound() {
     if (input) input.disabled = state.phase !== 'playing' || round.locked;
   }
 
-  $('letter-caption').textContent =
-    state.phase === 'reveal' ? 'La manche démarre…' : 'Lettre de la manche';
   refreshFillState();
   tickTimer();
 }
+
+/**
+ * Roulette : la lettre affichée se calcule à partir de l'horloge du serveur,
+ * avec la même formule que lui. Tous les écrans défilent donc à l'identique,
+ * et l'arrêt fige ce que chacun avait sous les yeux.
+ */
+function renderRoulette() {
+  const round = state?.round;
+  if (!round) return;
+  const roulette = round.roulette;
+  const letterEl = $('letter');
+  const spinning = Boolean(roulette?.spinning);
+
+  $('btn-spin').hidden = !roulette?.canStop;
+  letterEl.classList.toggle('is-spinning', spinning);
+
+  if (spinning) {
+    const elapsed = Math.max(0, serverNow() - roulette.startedAt);
+    const index = Math.floor(elapsed / roulette.spinMs) % roulette.wheel.length;
+    letterEl.textContent = roulette.wheel[index];
+    $('letter-pill').textContent = '…';
+    $('letter-caption').textContent = roulette.canStop
+      ? 'Appuie sur STOP pour fixer la lettre'
+      : "L'hôte arrête la roulette…";
+    return;
+  }
+
+  letterEl.textContent = round.letter ?? '';
+  $('letter-pill').textContent = round.letter ?? '';
+  $('letter-caption').textContent =
+    state.phase === 'reveal'
+      ? (roulette?.stoppedByName ? `Arrêtée par ${roulette.stoppedByName}` : 'La manche démarre…')
+      : 'Lettre de la manche';
+}
+// 60 images par seconde pendant la roulette, sans toucher au reste.
+setInterval(() => { if (state?.round?.roulette?.spinning) renderRoulette(); }, 55);
 
 function tickTimer() {
   if (!state?.round) return;

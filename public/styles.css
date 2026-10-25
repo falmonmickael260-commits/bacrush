@@ -427,6 +427,29 @@ select {
   color: transparent;
   text-shadow: 0 0 60px rgba(124, 92, 255, 0.35);
 }
+/* Roulette : la lettre défile, l'arrêt la fige d'un coup. */
+.letter.is-spinning {
+  animation: spin-pulse 0.11s steps(1) infinite;
+  text-shadow: 0 0 40px rgba(34, 211, 238, 0.5);
+}
+@keyframes spin-pulse {
+  0% { transform: translateY(-6px) scale(0.96); opacity: 0.75; }
+  100% { transform: none; opacity: 1; }
+}
+.btn-spin {
+  margin-top: 14px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 14px 46px;
+  border: none;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--warn), #f97316);
+  color: #2a1400;
+  box-shadow: 0 10px 30px rgba(251, 191, 36, 0.4);
+  animation: finish-glow 1.6s ease-in-out infinite;
+}
+
 .letter.is-revealing { animation: letter-reveal 0.85s cubic-bezier(0.2, 1.3, 0.3, 1) both; }
 @keyframes letter-reveal {
   0% { opacity: 0; transform: scale(0.3) rotate(-22deg); filter: blur(12px); }
@@ -816,10 +839,16 @@ select {
   .timer { position: static; transform: none; font-size: 1.7rem; margin-left: auto; }
   .timer.is-critical { animation: pulse-mobile 1s ease-in-out infinite; }
   @keyframes pulse-mobile { 50% { transform: scale(1.08); } }
-  .topbar-right { margin-left: 8px; }
-  .topbar-left { gap: 6px; }
-  .pill { padding: 6px 10px; font-size: 0.74rem; }
-  .pill-letter { display: inline-block; }
+  .topbar { flex-wrap: nowrap; gap: 6px; }
+  .topbar-right { margin-left: auto; gap: 4px; flex: none; }
+  .topbar-left { gap: 5px; flex-wrap: nowrap; min-width: 0; }
+  .pill { padding: 5px 9px; font-size: 0.7rem; }
+  .pill-letter { display: inline-block; padding: 4px 10px; }
+  /* Le code du salon reste consultable dans le panneau Scores : inutile de
+     le garder en tête d'écran pendant la manche, la place y est comptée. */
+  #room-pill { display: none; }
+  #btn-quit-round { padding: 7px 9px; font-size: 0.78rem; }
+  .timer { font-size: 1.45rem; }
 
   /* La lettre reste grande mais laisse de la place aux 8 rubriques. */
   .letter-stage { padding: 12px 0 4px; }

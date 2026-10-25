@@ -48,8 +48,9 @@ test('l\'hôte choisit 6, 12 ou 18 manches', () => {
     room.addPlayer('Hôte');
     assert.equal(room.setRoundCount(count).ok, true);
     room.startGame();
-    assert.equal(room.letters.length, count);
+    assert.equal(room.totalRounds, count);
     assert.equal(room.publicState().totalRounds, count);
+    assert.ok(room.round.wheel.length >= count, 'assez de lettres pour toute la partie');
   }
 });
 
