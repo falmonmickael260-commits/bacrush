@@ -63,7 +63,8 @@ trancher, et le jeu reste parfaitement jouable sans rien payer.
 
 En local, le serveur n'est joignable que sur ton réseau. Pour que des joueurs
 d'ailleurs rejoignent un salon, il faut l'héberger. Le dépôt contient tout le
-nécessaire : un `Dockerfile` et un blueprint `render.yaml`.
+nécessaire : un `Dockerfile`, un blueprint `render.yaml` et une config
+`railway.json`.
 
 **Sur Render (gratuit, le plus direct)**
 
@@ -79,11 +80,23 @@ chargement au réveil est lent et **les parties en cours sont perdues**. Pour
 des soirées régulières, passer `plan: free` à `plan: starter` dans
 `render.yaml` (service toujours allumé).
 
-**Ailleurs** — le `Dockerfile` fonctionne tel quel sur Fly.io, Railway, Koyeb
-ou n'importe quel hébergeur Docker. Une seule contrainte, quel que soit
-l'hôte : **un seul exemplaire**. Les parties vivent dans la mémoire du
-processus ; deux exemplaires enverraient les joueurs d'un même salon sur des
-serveurs différents, avec des lettres et des scores distincts.
+**Sur Railway** — `railway.json` est prêt (même image Docker que Render).
+
+1. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
+2. Choisir `bacrush` : Railway lit `railway.json` et construit le `Dockerfile`
+3. Onglet **Variables** → ajouter `ANTHROPIC_API_KEY` si tu veux l'arbitrage IA
+   (facultatif : sans elle, le mode secours et le vote du salon suffisent)
+4. Onglet **Settings → Networking** → **Generate Domain** : c'est l'adresse à
+   partager
+
+Railway injecte `PORT` tout seul, le serveur l'utilise. Ne monte **jamais** le
+nombre de réplicas au-dessus de 1 (`numReplicas` dans `railway.json`).
+
+**Ailleurs** — le `Dockerfile` fonctionne tel quel sur Fly.io, Koyeb ou
+n'importe quel hébergeur Docker. Une seule contrainte, quel que soit l'hôte :
+**un seul exemplaire**. Les parties vivent dans la mémoire du processus ; deux
+exemplaires enverraient les joueurs d'un même salon sur des serveurs
+différents, avec des lettres et des scores distincts.
 
 ## Règles appliquées
 
