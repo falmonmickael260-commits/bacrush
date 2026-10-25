@@ -258,6 +258,26 @@ async function handleApi(req, res, url, hub) {
         hub.pump(room); // lance la validation immédiatement
         return sendJSON(res, result.ok || result.ignored ? 200 : 409, result);
       }
+      case 'arbitration': {
+        if (player.id !== room.hostId) {
+          return sendJSON(res, 403, { error: "Seul l'hôte choisit le mode d'arbitrage" });
+        }
+        const result = room.setArbitration({
+          mode: String(body.mode ?? ''),
+          refereeId: body.refereeId ? String(body.refereeId) : undefined,
+        });
+        hub.broadcast(room);
+        return sendJSON(res, result.ok ? 200 : 409, result);
+      }
+      case 'decide': {
+        const result = room.refereeDecide(player.id, {
+          targetPlayerId: String(body.targetPlayerId ?? ''),
+          categoryKey: String(body.categoryKey ?? ''),
+          accept: Boolean(body.accept),
+        });
+        hub.broadcast(room);
+        return sendJSON(res, result.ok ? 200 : 409, result);
+      }
       case 'challenge': {
         const result = room.toggleChallenge(player.id, {
           targetPlayerId: String(body.targetPlayerId ?? ''),

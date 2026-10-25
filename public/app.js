@@ -164,6 +164,19 @@ $('btn-start').addEventListener('click', async () => {
   catch (err) { toast(err.message); }
 });
 
+async function setArbitration(mode) {
+  const refereeId = mode === 'referee'
+    ? ($('referee-select').value || state?.you?.id)
+    : undefined;
+  try {
+    await api(`/api/rooms/${session.code}/arbitration`, { token: session.token, mode, refereeId });
+  } catch (err) { toast(err.message); }
+}
+
+$('mode-vote').addEventListener('click', () => setArbitration('vote'));
+$('mode-referee').addEventListener('click', () => setArbitration('referee'));
+$('referee-select').addEventListener('change', () => setArbitration('referee'));
+
 $('lobby-code').addEventListener('click', () => {
   navigator.clipboard?.writeText(state?.code ?? '').then(
     () => toast('Code copié'),
@@ -181,6 +194,17 @@ $('btn-ready').addEventListener('click', async () => {
   } catch (err) { toast(err.message); }
   setTimeout(() => { $('btn-ready').disabled = false; }, 600);
 });
+
+async function decide(targetPlayerId, categoryKey, accept) {
+  try {
+    await api(`/api/rooms/${session.code}/decide`, {
+      token: session.token,
+      targetPlayerId,
+      categoryKey,
+      accept,
+    });
+  } catch (err) { toast(err.message); }
+}
 
 async function toggleChallenge(targetPlayerId, categoryKey) {
   try {
@@ -336,6 +360,7 @@ function renderLobby() {
       ${player.isHost ? '<span class="tag">hôte</span>' : ''}`;
     list.appendChild(li);
   }
+  renderArbitrationPicker();
   const isHost = Boolean(state.you?.isHost);
   $('btn-start').hidden = !isHost;
   $('btn-start').disabled = state.players.length < 1;
@@ -344,6 +369,36 @@ function renderLobby() {
   $('lobby-hint').textContent = isHost
     ? `${config.totalRounds} manches de ${config.roundDurationMs / 1000} s · lance quand tout le monde est là`
     : "En attente du lancement par l'hôte…";
+}
+
+function renderArbitrationPicker() {
+  const arbitration = state.arbitration ?? { mode: 'vote' };
+  const isHost = Boolean(state.you?.isHost);
+  const isReferee = arbitration.mode === 'referee';
+
+  $('mode-picker').hidden = !isHost;
+  $('mode-readonly').hidden = isHost;
+  if (!isHost) {
+    $('mode-readonly').textContent = isReferee
+      ? `Arbitrage : ${arbitration.refereeName ?? '—'} tranche les réponses`
+      : 'Arbitrage : le salon vote';
+    return;
+  }
+
+  $('mode-vote').classList.toggle('is-on', !isReferee);
+  $('mode-referee').classList.toggle('is-on', isReferee);
+  $('referee-field').hidden = !isReferee;
+
+  const select = $('referee-select');
+  const wanted = arbitration.refereeId ?? state.you?.id;
+  const signature = state.players.map((p) => `${p.id}:${p.name}`).join('|');
+  if (select.dataset.signature !== signature) {
+    select.dataset.signature = signature;
+    select.innerHTML = state.players
+      .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}${p.id === state.you?.id ? ' (toi)' : ''}</option>`)
+      .join('');
+  }
+  if (wanted && select.value !== wanted) select.value = wanted;
 }
 
 function renderRound() {
@@ -413,22 +468,50 @@ function renderValidating() {
 function renderVoting() {
   const vote = state.vote;
   if (!vote) return;
+  const refereeMode = vote.mode === 'referee';
   $('vote-letter').textContent = state.round?.letter ?? '';
-  $('vote-ready-count').textContent = `${vote.readyCount} / ${vote.playerCount} prêts`;
 
   const amReady = vote.readyIds.includes(state.you?.id);
   const button = $('btn-ready');
-  button.textContent = amReady ? 'EN ATTENTE DES AUTRES…' : 'PRÊT';
-  button.classList.toggle('btn-ready-on', amReady);
-  button.classList.toggle('btn-primary', !amReady);
+
+  if (refereeMode) {
+    $('vote-eyebrow').innerHTML = `Arbitrage — lettre <b id="vote-letter">${escapeHtml(state.round?.letter ?? '')}</b>`;
+    $('vote-title').textContent = vote.iAmReferee
+      ? 'À toi de trancher'
+      : `${vote.refereeName ?? "L'arbitre"} examine les réponses`;
+    $('vote-intro').textContent = vote.iAmReferee
+      ? 'Accepte ou refuse les réponses douteuses, puis valide la manche. Une réponse qui ne commence pas par la lettre reste refusée, même pour toi.'
+      : 'Les décisions apparaissent en direct. Patiente, la manche se terminera dès que l\'arbitre aura validé.';
+    $('vote-ready-count').textContent = vote.refereeName ? `Arbitre : ${vote.refereeName}` : '';
+    button.hidden = !vote.iAmReferee;
+    button.textContent = 'VALIDER LA MANCHE';
+    button.classList.add('btn-primary');
+    button.classList.remove('btn-ready-on');
+    $('vote-hint').textContent = vote.iAmReferee
+      ? 'Sans décision de ta part, le verdict automatique s\'applique.'
+      : 'La manche se termine seule à la fin du compte à rebours.';
+  } else {
+    $('vote-eyebrow').innerHTML = `Contestation — lettre <b id="vote-letter">${escapeHtml(state.round?.letter ?? '')}</b>`;
+    $('vote-title').textContent = 'Une réponse vous semble fausse ?';
+    $('vote-intro').textContent =
+      'Touchez « Contester ». Une réponse est refusée si la majorité des autres joueurs la conteste.';
+    $('vote-ready-count').textContent = `${vote.readyCount} / ${vote.playerCount} prêts`;
+    button.hidden = false;
+    button.textContent = amReady ? 'EN ATTENTE DES AUTRES…' : 'PRÊT';
+    button.classList.toggle('btn-ready-on', amReady);
+    button.classList.toggle('btn-primary', !amReady);
+    $('vote-hint').textContent = 'Le vote se termine seul à la fin du compte à rebours.';
+  }
 
   const nameOf = (id) => state.players.find((p) => p.id === id)?.name ?? '—';
   const list = $('vote-list');
   list.innerHTML = '';
 
   for (const category of vote.categories) {
-    // On masque les rubriques où personne n'a marqué de point : rien à contester.
-    if (!category.entries.some((e) => e.counted)) continue;
+    // En mode vote, on masque les rubriques sans point en jeu : rien à contester.
+    // En mode arbitre, il peut repêcher une réponse refusée : on montre tout.
+    const hasSomething = category.entries.some((e) => (refereeMode ? e.raw : e.counted));
+    if (!hasSomething) continue;
     const block = document.createElement('section');
     block.className = 'vote-cat';
     block.innerHTML = `<h3><span>${category.icon}</span>${escapeHtml(category.label)}</h3>`;
@@ -453,13 +536,39 @@ function renderVoting() {
           ${entry.challenges > 0 ? `<span class="vote-count">${entry.challenges} / ${entry.required} voix</span>` : ''}
         </span>`;
 
+      row.classList.toggle('is-accepted', entry.decision === true);
+      row.classList.toggle('is-challenged', entry.challenges > 0 || entry.decision === false);
+      const actions = row.querySelector('.vote-actions');
+
       if (entry.canChallenge) {
         const action = document.createElement('button');
         action.type = 'button';
         action.className = `btn btn-challenge${entry.challengedByMe ? ' is-on' : ''}`;
         action.textContent = entry.challengedByMe ? 'Contestée' : 'Contester';
         action.addEventListener('click', () => toggleChallenge(entry.playerId, category.key));
-        row.querySelector('.vote-actions').appendChild(action);
+        actions.appendChild(action);
+      }
+
+      if (entry.canDecide) {
+        if (entry.canAccept) {
+          const accept = document.createElement('button');
+          accept.type = 'button';
+          accept.className = `btn btn-decide btn-accept${entry.decision === true ? ' is-on' : ''}`;
+          accept.textContent = '✓ Accepter';
+          accept.addEventListener('click', () => decide(entry.playerId, category.key, true));
+          actions.appendChild(accept);
+        }
+        const refuse = document.createElement('button');
+        refuse.type = 'button';
+        refuse.className = `btn btn-decide btn-refuse${entry.decision === false ? ' is-on' : ''}`;
+        refuse.textContent = '✕ Refuser';
+        refuse.addEventListener('click', () => decide(entry.playerId, category.key, false));
+        actions.appendChild(refuse);
+      } else if (vote.mode === 'referee' && entry.decision !== null) {
+        const note = document.createElement('span');
+        note.className = 'decision-note';
+        note.textContent = entry.decision ? 'acceptée' : 'refusée';
+        actions.appendChild(note);
       }
       block.appendChild(row);
     }
@@ -550,6 +659,7 @@ function renderResults() {
             ${shared ? `<span class="badge group">partagée ×${group.playerIds.length}</span>` : ''}
             ${entry.searched ? '<span class="badge search">vérifiée en ligne</span>' : ''}
             ${/^Refusée par le salon/.test(entry.reason) ? '<span class="badge bad">refusée au vote</span>' : ''}
+            ${/arbitre$/.test(entry.reason) ? `<span class="badge ${entry.status === 'valide' ? 'ok' : 'bad'}">${entry.status === 'valide' ? "repêchée par l'arbitre" : "refusée par l'arbitre"}</span>` : ''}
           </div>
           <div class="res-badges">
             <span class="points p${entry.points} pop">${entry.points}</span>

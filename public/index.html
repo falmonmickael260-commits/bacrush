@@ -44,6 +44,26 @@
         <p class="muted">Partage ce code pour que les autres rejoignent la partie.</p>
         <p class="lobby-count" id="lobby-count">1 / 8 joueurs</p>
         <ul class="player-grid" id="lobby-players"></ul>
+
+        <div class="mode-picker" id="mode-picker">
+          <p class="eyebrow">Qui tranche les réponses douteuses ?</p>
+          <div class="mode-options">
+            <button class="mode-option is-on" id="mode-vote" type="button">
+              <b>Le salon vote</b>
+              <span>La majorité des autres joueurs décide</span>
+            </button>
+            <button class="mode-option" id="mode-referee" type="button">
+              <b>Un arbitre</b>
+              <span>Un joueur accepte ou refuse, et joue aussi</span>
+            </button>
+          </div>
+          <label class="field referee-field" id="referee-field" hidden>
+            <span>Arbitre de la partie</span>
+            <select id="referee-select"></select>
+          </label>
+        </div>
+        <p class="mode-readonly muted small" id="mode-readonly" hidden></p>
+
         <button class="btn btn-primary btn-block" id="btn-start">Lancer la partie</button>
         <p class="muted small" id="lobby-hint">En attente de l'hôte…</p>
       </div>
@@ -96,9 +116,9 @@
     <section class="screen" id="screen-voting">
       <header class="vote-head">
         <div>
-          <p class="eyebrow">Contestation — lettre <b id="vote-letter">M</b></p>
-          <h2>Une réponse vous semble fausse ?</h2>
-          <p class="muted small">
+          <p class="eyebrow" id="vote-eyebrow">Contestation — lettre <b id="vote-letter">M</b></p>
+          <h2 id="vote-title">Une réponse vous semble fausse ?</h2>
+          <p class="muted small" id="vote-intro">
             Touchez « Contester ». Une réponse est refusée si la majorité des autres
             joueurs la conteste.
           </p>

@@ -1,6 +1,6 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { CATEGORY_KEYS } from '../shared/categories.js';
-import { isBlank } from '../shared/normalize.js';
+import { firstLetterOf, isBlank } from '../shared/normalize.js';
 import { drawLetters, TOTAL_ROUNDS } from './letters.js';
 import { scoreRound } from './scoring.js';
 
@@ -9,6 +9,12 @@ export const REVEAL_DURATION_MS = 3_200; // animation de révélation de la lett
 export const VALIDATION_TIMEOUT_MS = 90_000; // garde-fou si l'IA ne répond jamais
 export const MAX_PLAYERS = 8; // capacité d'un salon
 export const VOTE_DURATION_MS = 60_000; // temps de contestation après la validation
+export const REFEREE_DURATION_MS = 120_000; // l'arbitre relit toutes les réponses : plus de temps
+
+export const ARBITRATION = Object.freeze({
+  VOTE: 'vote', // le salon conteste, la majorité tranche
+  REFEREE: 'referee', // un arbitre désigné accepte ou refuse
+});
 
 export const PHASE = Object.freeze({
   LOBBY: 'lobby',
@@ -53,6 +59,8 @@ export class Room {
     this.players = new Map(); // playerId -> player
     this.tokens = new Map(); // token -> playerId
     this.hostId = null;
+    this.arbitrationMode = ARBITRATION.VOTE;
+    this.refereeId = null;
     this.phase = PHASE.LOBBY;
     this.letters = [];
     this.roundIndex = -1;
@@ -101,6 +109,7 @@ export class Room {
     if (this.hostId === playerId) {
       this.hostId = this.players.keys().next().value ?? null;
     }
+    this.ensureRefereeStillHere();
     this.touch();
   }
 
@@ -118,6 +127,42 @@ export class Room {
 
   get isFull() {
     return this.players.size >= MAX_PLAYERS;
+  }
+
+  get referee() {
+    return this.refereeId ? this.players.get(this.refereeId) ?? null : null;
+  }
+
+  /**
+   * Choix du mode d'arbitrage, dans le salon uniquement : vote de tous, ou un
+   * arbitre désigné qui accepte ou refuse les réponses.
+   */
+  setArbitration({ mode, refereeId }) {
+    if (this.phase !== PHASE.LOBBY) {
+      return { ok: false, error: 'La partie est déjà lancée' };
+    }
+    if (mode !== ARBITRATION.VOTE && mode !== ARBITRATION.REFEREE) {
+      return { ok: false, error: 'Mode inconnu' };
+    }
+    if (mode === ARBITRATION.REFEREE) {
+      const target = refereeId ?? this.refereeId ?? this.hostId;
+      if (!this.players.has(target)) return { ok: false, error: 'Arbitre inconnu' };
+      this.refereeId = target;
+    } else {
+      this.refereeId = null;
+    }
+    this.arbitrationMode = mode;
+    this.touch();
+    return { ok: true, mode: this.arbitrationMode, refereeId: this.refereeId };
+  }
+
+  /** L'arbitre a-t-il quitté la partie ? On repasse alors au vote du salon. */
+  ensureRefereeStillHere() {
+    if (this.arbitrationMode !== ARBITRATION.REFEREE) return;
+    if (this.refereeId && this.players.has(this.refereeId)) return;
+    this.arbitrationMode = ARBITRATION.VOTE;
+    this.refereeId = null;
+    this.touch();
   }
 
   // ------------------------------------------------------------ cycle de jeu
@@ -161,7 +206,8 @@ export class Room {
       verdictsApplied: false,
       uncertainPolicy: 'lenient',
       provisional: null, // résultats avant le vote du salon
-      challenges: new Map(), // "joueur::rubrique" -> Set de contestataires
+      challenges: new Map(), // "joueur::rubrique" -> Set de contestataires (mode vote)
+      decisions: new Map(), // "joueur::rubrique" -> true (accepté) | false (refusé) par l'arbitre
       ready: new Set(),
       voteEndsAt: null,
       results: null,
@@ -299,8 +345,11 @@ export class Room {
 
     // Seul un salon de plusieurs joueurs peut voter ; en solo on tranche tout de suite.
     if (this.players.size >= 2) {
+      this.ensureRefereeStillHere();
       this.phase = PHASE.VOTING;
-      this.round.voteEndsAt = this.now() + VOTE_DURATION_MS;
+      this.round.voteEndsAt =
+        this.now() +
+        (this.arbitrationMode === ARBITRATION.REFEREE ? REFEREE_DURATION_MS : VOTE_DURATION_MS);
       this.touch();
       return { ok: true, voting: true };
     }
@@ -336,6 +385,9 @@ export class Room {
     if (this.phase !== PHASE.VOTING || !this.round) {
       return { ok: false, error: 'Aucun vote en cours' };
     }
+    if (this.arbitrationMode !== ARBITRATION.VOTE) {
+      return { ok: false, error: "Cette partie est arbitrée par un joueur" };
+    }
     if (!this.players.has(playerId) || !this.players.has(targetPlayerId)) {
       return { ok: false, error: 'Joueur inconnu' };
     }
@@ -363,6 +415,54 @@ export class Room {
     return { ok: true, challenges: voters.size };
   }
 
+  /**
+   * Une réponse peut-elle être repêchée par l'arbitre ?
+   * Jamais si elle ne commence pas par la lettre imposée : cette règle est
+   * absolue et n'appartient à personne, pas même à l'arbitre.
+   */
+  canRefereeAccept(entry) {
+    if (!entry || isBlank(entry.raw)) return false;
+    return firstLetterOf(entry.raw) === firstLetterOf(this.round.letter);
+  }
+
+  /**
+   * L'arbitre accepte ou refuse une réponse. Rappeler avec la même valeur
+   * annule la décision et rend la main au verdict automatique.
+   */
+  refereeDecide(playerId, { targetPlayerId, categoryKey, accept }) {
+    if (this.phase !== PHASE.VOTING || !this.round) {
+      return { ok: false, error: "Aucun arbitrage en cours" };
+    }
+    if (this.arbitrationMode !== ARBITRATION.REFEREE) {
+      return { ok: false, error: 'Cette partie se joue au vote du salon' };
+    }
+    if (playerId !== this.refereeId) {
+      return { ok: false, error: "Seul l'arbitre décide" };
+    }
+    if (!this.players.has(targetPlayerId) || !CATEGORY_KEYS.includes(categoryKey)) {
+      return { ok: false, error: 'Réponse inconnue' };
+    }
+    const entry = this.round.provisional?.categories
+      .find((c) => c.key === categoryKey)
+      ?.entries.find((e) => e.playerId === targetPlayerId);
+    if (!entry || isBlank(entry.raw)) {
+      return { ok: false, error: 'Aucune réponse à juger' };
+    }
+    if (accept && !this.canRefereeAccept(entry)) {
+      return {
+        ok: false,
+        error: `Impossible : le mot ne commence pas par ${firstLetterOf(this.round.letter)}`,
+      };
+    }
+
+    const key = Room.challengeKey(targetPlayerId, categoryKey);
+    const current = this.round.decisions.get(key);
+    if (current === accept) this.round.decisions.delete(key);
+    else this.round.decisions.set(key, Boolean(accept));
+    this.touch();
+    return { ok: true, decision: this.round.decisions.get(key) ?? null };
+  }
+
   /** « Prêt » : quand tous les joueurs connectés le sont, on tranche. */
   markReady(playerId) {
     if (this.phase !== PHASE.VOTING || !this.round) {
@@ -371,6 +471,11 @@ export class Room {
     if (!this.players.has(playerId)) return { ok: false, error: 'Joueur inconnu' };
     this.round.ready.add(playerId);
     this.touch();
+    // En mode arbitre, c'est lui seul qui clôt la manche.
+    if (this.arbitrationMode === ARBITRATION.REFEREE) {
+      if (playerId === this.refereeId) return this.finalizeRound();
+      return { ok: true, waiting: true };
+    }
     if (this.everyoneReady()) return this.finalizeRound();
     return { ok: true, waiting: true };
   }
@@ -391,6 +496,31 @@ export class Room {
 
     const adjusted = new Map(this.round.verdicts ?? []);
     const refused = [];
+
+    // Mode arbitre : ses décisions priment sur le verdict automatique.
+    for (const [key, accepted] of this.round.decisions) {
+      const verdict = adjusted.get(key);
+      const [targetPlayerId, categoryKey] = key.split('::');
+      if (accepted) {
+        adjusted.set(key, {
+          ...(verdict ?? {}),
+          status: 'valide',
+          recognized: verdict?.recognized || verdict?.raw || '',
+          groupKey: verdict?.groupKey || verdict?.recognized || '',
+          decidedBy: 'arbitre',
+          reason: "Acceptée par l'arbitre",
+        });
+      } else if (verdict) {
+        adjusted.set(key, {
+          ...verdict,
+          status: 'invalide',
+          decidedBy: 'arbitre',
+          reason: "Refusée par l'arbitre",
+        });
+        refused.push({ targetPlayerId, categoryKey, byReferee: true });
+      }
+    }
+
     for (const [key, voters] of this.round.challenges) {
       const [targetPlayerId, categoryKey] = key.split('::');
       const needed = this.requiredChallenges(targetPlayerId);
@@ -527,6 +657,11 @@ export class Room {
       roundNumber: this.roundIndex + 1,
       gameNumber: this.gameNumber,
       lettersUsed: this.letters.slice(0, Math.max(0, this.roundIndex + 1)),
+      arbitration: {
+        mode: this.arbitrationMode,
+        refereeId: this.refereeId,
+        refereeName: this.referee?.name ?? null,
+      },
       players: standings,
       you: null,
       round: null,
@@ -567,7 +702,12 @@ export class Room {
       };
       if (this.phase === PHASE.VOTING && this.round.provisional) {
         const mine = forPlayerId;
+        const isReferee = Boolean(mine && mine === this.refereeId);
         state.vote = {
+          mode: this.arbitrationMode,
+          refereeId: this.refereeId,
+          refereeName: this.referee?.name ?? null,
+          iAmReferee: isReferee,
           endsAt: this.round.voteEndsAt,
           remainingMs: Math.max(0, (this.round.voteEndsAt ?? t) - t),
           readyIds: [...this.round.ready],
@@ -580,6 +720,8 @@ export class Room {
             entries: category.entries.map((entry) => {
               const key = Room.challengeKey(entry.playerId, category.key);
               const voters = this.round.challenges.get(key);
+              const decision = this.round.decisions.get(key);
+              const refereeMode = this.arbitrationMode === ARBITRATION.REFEREE;
               return {
                 playerId: entry.playerId,
                 raw: entry.raw,
@@ -591,7 +733,12 @@ export class Room {
                 challenges: voters?.size ?? 0,
                 required: this.requiredChallenges(entry.playerId),
                 challengedByMe: Boolean(mine && voters?.has(mine)),
-                canChallenge: Boolean(mine && entry.counted && entry.playerId !== mine),
+                canChallenge: Boolean(
+                  !refereeMode && mine && entry.counted && entry.playerId !== mine,
+                ),
+                decision: decision === undefined ? null : decision,
+                canDecide: Boolean(refereeMode && isReferee && entry.raw),
+                canAccept: refereeMode ? this.canRefereeAccept(entry) : false,
               };
             }),
           })),

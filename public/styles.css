@@ -19,6 +19,11 @@
 
 * { box-sizing: border-box; }
 
+/* Un élément masqué le reste vraiment : sans cette règle, toute classe qui
+   fixe un `display` (le dock FIN en grid, les champs en block) l'emporterait
+   sur la règle navigateur [hidden] et afficherait l'élément malgré tout. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   min-height: 100%;
@@ -190,6 +195,71 @@ input[type="text"]:focus {
   letter-spacing: 0.1em;
   color: var(--accent-2);
 }
+
+/* ------------------------------------------------------- choix d'arbitrage */
+.mode-picker { text-align: left; margin: 4px 0 18px; }
+.mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 480px) { .mode-options { grid-template-columns: 1fr; } }
+.mode-option {
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  display: grid;
+  gap: 2px;
+  padding: 11px 13px;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.mode-option b { font-size: 0.92rem; }
+.mode-option span { font-size: 0.74rem; color: var(--muted); line-height: 1.3; }
+.mode-option.is-on {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.25), var(--surface-2));
+}
+.referee-field { margin: 12px 0 0; }
+select {
+  width: 100%;
+  font: inherit;
+  font-size: 1rem;
+  padding: 12px 14px;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+}
+.mode-readonly { margin: 0 0 16px; }
+.referee-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #0b0d1a;
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  font-weight: 700;
+}
+
+/* boutons de décision de l'arbitre */
+.btn-decide {
+  padding: 7px 13px;
+  min-height: 38px;
+  font-size: 0.82rem;
+  border-radius: 11px;
+  background: transparent;
+}
+.btn-accept { border-color: rgba(52, 211, 153, 0.45); color: var(--ok); }
+.btn-accept.is-on { background: var(--ok); border-color: var(--ok); color: #04120c; }
+.btn-refuse { border-color: rgba(251, 113, 133, 0.45); color: var(--bad); }
+.btn-refuse.is-on { background: var(--bad); border-color: var(--bad); color: #2a0710; }
+.vote-row.is-accepted { background: rgba(52, 211, 153, 0.09); }
+.decision-note { font-size: 0.74rem; color: var(--muted); }
 
 /* ---------------------------------------------------------------- manche */
 #screen-round { padding: 14px 16px 150px; max-width: 1100px; margin: 0 auto; }

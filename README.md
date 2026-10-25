@@ -109,24 +109,37 @@ différents, avec des lettres et des scores distincts.
 | Bouton FIN | invisible tant que les 8 rubriques ne sont pas remplies, revérifié côté serveur |
 | Clôture globale | un seul clic accepté, la manche se termine pour tout le monde |
 | Fin automatique à 00:00 | balayage serveur toutes les 250 ms, sans dépendre d'un navigateur ouvert |
-| Vote du salon | 60 s de contestation avant le comptage, majorité des autres joueurs |
+| Arbitrage humain | vote du salon (60 s, majorité) ou arbitre désigné (2 min), au choix de l'hôte |
 | Barème 2 / 1 / 0 | `src/game/scoring.js`, appliqué après le vote, jamais par l'IA |
 
-## Le vote du salon (arbitrage humain)
+## L'arbitrage humain
 
-Après la validation et **avant que le moindre point ne soit attribué**, le
-salon dispose de 60 secondes pour contester. Chaque joueur voit les réponses de
-tous, avec leur statut provisoire, et peut toucher « Contester » sur celles des
-autres — jamais sur les siennes, ni sur une réponse déjà à zéro.
+Après la validation automatique et **avant que le moindre point ne soit
+attribué**, les joueurs ont le dernier mot. L'hôte choisit la formule dans le
+salon, avant le lancement ; elle vaut pour toute la partie.
 
-Une réponse est refusée si **la majorité stricte des autres joueurs** la
-conteste : 2 voix sur 2 autres joueurs, 2 sur 3, 4 sur 7. Sinon le verdict
-initial tient. Le vote se termine dès que tout le monde a appuyé sur « Prêt »,
-ou seul à la fin du compte à rebours — un joueur parti ne bloque personne.
+**Le salon vote** (par défaut) — 60 secondes pour toucher « Contester » sur les
+réponses des autres, jamais sur les siennes ni sur une réponse déjà à zéro. Une
+réponse tombe si **la majorité stricte des autres joueurs** la conteste : 2
+voix sur 2 autres joueurs, 2 sur 3, 4 sur 7. Le vote se clôt dès que tout le
+monde a appuyé sur « Prêt ».
+
+**Un arbitre** — l'hôte désigne un joueur. Il joue normalement et marque des
+points, mais c'est lui seul qui tranche : ✓ pour repêcher une réponse que la
+machine n'a pas su valider, ✕ pour en refuser une. Il dispose de 2 minutes, et
+juge aussi ses propres réponses. Sans décision de sa part, le verdict
+automatique s'applique. S'il quitte le salon, la partie repasse au vote.
+
+Une limite vaut pour les deux formules : **personne ne peut repêcher une
+réponse qui ne commence pas par la lettre imposée**, ni l'arbitre ni le salon.
+Cette règle appartient au serveur.
+
+Les deux formules se terminent seules à la fin du compte à rebours, et un
+joueur déconnecté ne bloque personne. En solo, il n'y a ni vote ni arbitre :
+les points s'appliquent directement.
 
 C'est ce qui rend le jeu **jouable sans clé d'API** : le mode secours valide ce
-qu'il reconnaît, et les joueurs tranchent le reste entre eux, comme à la vraie
-table. En solo, il n'y a pas de vote : les points s'appliquent directement.
+qu'il reconnaît, les joueurs tranchent le reste, comme à la vraie table.
 
 ## Comment l'IA valide (le cœur du jeu)
 
@@ -207,7 +220,7 @@ L'interface est pensée pour être jouée au pouce :
 ## Tests
 
 ```bash
-npm test          # 77 tests, sans réseau ni clé d'API
+npm test          # 89 tests, sans réseau ni clé d'API
 npm run test:ai   # ajoute les tests de l'IA réelle (nécessite ANTHROPIC_API_KEY)
 ```
 
