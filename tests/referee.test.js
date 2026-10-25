@@ -197,6 +197,33 @@ test('sans décision de l\'arbitre, le compte à rebours applique les verdicts a
   assert.equal(entry(room, 'ville', alice.id).points, 2);
 });
 
+test('les décisions de l\'arbitre repartent de zéro à chaque manche', () => {
+  const { room, clock, players, referee } = setup();
+  const [alice] = players;
+
+  // Manche 1 : l'arbitre refuse la ville d'Alice.
+  closeWith(room, { [alice.id]: { ville: 'Mordor' }, [referee.id]: { ville: 'Metz' } });
+  room.refereeDecide(referee.id, { targetPlayerId: alice.id, categoryKey: 'ville', accept: false });
+  room.markReady(referee.id);
+  assert.equal(entry(room, 'ville', alice.id).points, 0);
+  assert.equal(room.players.get(alice.id).score, 0);
+
+  // Manche 2 : aucune décision ne doit traîner de la manche précédente.
+  assert.equal(room.nextRound(0).ok, true);
+  room.letters[room.roundIndex] = 'M';
+  room.round.letter = 'M';
+  clock.t += REVEAL_DURATION_MS + 1;
+  room.tick();
+  assert.equal(room.round.decisions.size, 0, 'les décisions sont propres');
+  assert.equal(room.arbitrationMode, ARBITRATION.REFEREE, 'l\'arbitre reste le même');
+
+  closeWith(room, { [alice.id]: { ville: 'Marseille' }, [referee.id]: { ville: 'Metz' } });
+  room.markReady(referee.id);
+  assert.equal(entry(room, 'ville', alice.id).points, 2, 'Alice marque normalement');
+  assert.equal(room.players.get(alice.id).score, 2, 'le cumul suit');
+  assert.equal(room.players.get(referee.id).score, 4, 'deux manches à 2 points');
+});
+
 test('si l\'arbitre quitte le salon, la partie repasse au vote', () => {
   const room = new Room({ code: 'CCCC' });
   const a = room.addPlayer('A');
